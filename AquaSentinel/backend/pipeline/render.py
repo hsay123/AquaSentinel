@@ -429,6 +429,188 @@ def _water_mask_otsu(masked: ee.Image, aoi_geometry: ee.Geometry) -> tuple[ee.Im
     return mask, threshold
 
 
+def render_true_color_raster(
+    aoi_geojson: dict,
+    waterbody_id: str,
+    date_iso: str,
+    out_dir: str | Path,
+    scale_m: int = DISPLAY_SCALE_M,
+) -> dict[str, Any]:
+    """Clean, georeferenced true-colour raster for the map base layer.
+
+    Same problem as the index overlay had: :func:`render_true_color` returns a
+    decorated matplotlib figure, so positioning it at the AOI bounds misaligns
+    the imagery under the overlay. This returns exactly the data grid with no
+    axes/title, ready to sit beneath the thematic overlay.
+    """
+    out_dir = Path(out_dir)
+    scene = resolve_scene(aoi_geojson, date_iso)
+    if scene is None:
+        raise ValueError(f"No Sentinel-2 scene found near {date_iso} for {waterbody_id}")
+    scene_id, actual_date = scene
+
+    mosaic = scene_mosaic(aoi_geojson, actual_date)
+    if mosaic is None:
+        raise ValueError(f"No Sentinel-2 imagery for {waterbody_id} on {actual_date}")
+    masked = mask_scl(mosaic)
+    rgb = masked.select(RGB_BANDS).multiply(0.0001)
+
+    channels = []
+    bounds = None
+    for band in RGB_BANDS:
+        s = _sample_array(rgb, aoi_geojson, band, scale_m)
+        if not s["valid"]:
+            raise ValueError(f"No valid {band} pixels for {waterbody_id} on {actual_date}")
+        channels.append(s["array"])
+        bounds = s["bounds"]
+
+    stack = np.dstack(channels)
+    valid = np.isfinite(stack).all(axis=2)
+    if not valid.any():
+        raise ValueError(f"No valid RGB pixels for {waterbody_id} on {actual_date}")
+
+    lo = np.nanpercentile(stack[valid], 2)
+    hi = np.nanpercentile(stack[valid], 98)
+    if not np.isfinite(lo) or not np.isfinite(hi) or np.isclose(lo, hi):
+        lo, hi = float(np.nanmin(stack[valid])), float(np.nanmax(stack[valid])) or 1.0
+    stretched = np.clip((stack - lo) / (hi - lo), 0, 1)
+    stretched[~valid] = np.nan
+
+    rgba = np.dstack([stretched, np.ones(stretched.shape[:2])])
+    rgba[~valid, 3] = 0.0
+
+    height, width = stack.shape[:2]
+    fig = plt.figure(figsize=(width / 100, height / 100), dpi=100)
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.set_axis_off()
+    ax.imshow(rgba, interpolation="bilinear")
+    path = out_dir / f"{waterbody_id}_truecolor_{actual_date}_raster.png"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=100, transparent=True, pad_inches=0)
+    plt.close(fig)
+
+    meta = {
+        "path": str(path),
+        "kind": "true-color-raster",
+        "date": actual_date,
+        "requested_date": date_iso,
+        "scene_id": scene_id,
+        "bounds": bounds,
+        "width": width,
+        "height": height,
+        "scale_m": scale_m,
+        "stretch_low": float(lo),
+        "stretch_high": float(hi),
+        "title": "True colour — Sentinel-2 L2A",
+    }
+    path.with_suffix(".json").write_text(json.dumps(meta))
+    return meta
+
+
+def render_index_overlay(
+    aoi_geojson: dict,
+    waterbody_id: str,
+    index: str,
+    date_iso: str,
+    out_dir: str | Path,
+    scale_m: int = DISPLAY_SCALE_M,
+) -> dict[str, Any]:
+    """Render a clean, georeferenced RGBA overlay of the real per-pixel index.
+
+    This exists because :func:`render_index_map` produces a *decorated
+    matplotlib figure* (axes, title, colour bar, margins) sized 750x645 for a
+    249x227 data array. Overlaying that at the AOI bounding box scales the data
+    into the wrong sub-rectangle, so the water surface appears offset and
+    distorted. It was also saved with an opaque figure facecolor, so masked land
+    pixels painted over the satellite imagery.
+
+    Here the canvas is exactly the data grid (1 px per cell, no axes, no colour
+    bar) and land is written as fully transparent alpha=0, so only the real
+    water surface carries colour and everything else shows the imagery beneath.
+
+    Shares ``_sample_array``, the per-scene Otsu water mask and the colormaps
+    with the evidence renderer -- one render module, multiple callers.
+    """
+    out_dir = Path(out_dir)
+    index = index.lower()
+    scene = resolve_scene(aoi_geojson, date_iso)
+    if scene is None:
+        raise ValueError(f"No Sentinel-2 scene found near {date_iso} for {waterbody_id}")
+    scene_id, actual_date = scene
+
+    mosaic = scene_mosaic(aoi_geojson, actual_date)
+    if mosaic is None:
+        raise ValueError(f"No Sentinel-2 imagery for {waterbody_id} on {actual_date}")
+
+    masked = mask_scl(mosaic)
+    water_mask, otsu_threshold = _water_mask_otsu(masked, ee.Geometry(aoi_geojson))
+    water_only = masked.updateMask(water_mask)
+    indices_img = _display_index_image(water_only, index)
+
+    sampled = _sample_array(indices_img, aoi_geojson, index, scale_m)
+    arr = sampled["array"]
+    if not sampled["valid"]:
+        raise ValueError(f"No valid {index.upper()} pixels for {waterbody_id} on {actual_date}")
+
+    finite = arr[np.isfinite(arr)]
+    vmin, vmax = float(np.nanmin(finite)), float(np.nanmax(finite))
+    if np.isclose(vmin, vmax):
+        vmax = vmin + 1e-6
+
+    # RGBA float image: colour from the shared colormap, alpha 0 off-water.
+    rgba = colormap_for(index)(np.clip((np.nan_to_num(arr, nan=vmin) - vmin) / (vmax - vmin), 0, 1))
+    alpha = np.isfinite(arr).astype(np.float32)
+    # Feather the edge by one cell so the shoreline is not aliased.
+    water = alpha > 0
+    if water.any():
+        padded = np.pad(water, 1, mode="constant", constant_values=False)
+        neighbours = (
+            padded[:-2, 1:-1].astype(int) + padded[2:, 1:-1].astype(int)
+            + padded[1:-1, :-2].astype(int) + padded[1:-1, 2:].astype(int)
+        )
+        edge = water & (neighbours < 4)
+        alpha[edge] = 0.55
+    rgba[..., 3] = alpha
+
+    height, width = arr.shape
+    fig = plt.figure(figsize=(width / 100, height / 100), dpi=100)
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.set_axis_off()
+    # Single RGBA imshow. An earlier version drew an opaque base layer
+    # underneath, which made every pixel alpha=255 and painted the whole AOI
+    # rectangle over the satellite imagery. Bilinear interpolation softens the
+    # shoreline and carries alpha with it, so land stays transparent.
+    ax.imshow(rgba, interpolation="bilinear")
+    path = out_dir / f"{waterbody_id}_{index}_{actual_date}_overlay.png"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # transparent=True so masked land keeps alpha 0 (no opaque figure facecolor).
+    fig.savefig(path, dpi=100, transparent=True, pad_inches=0)
+    plt.close(fig)
+
+    meta = {
+        "path": str(path),
+        "kind": "overlay",
+        "index": index,
+        "date": actual_date,
+        "requested_date": date_iso,
+        "scene_id": scene_id,
+        "bounds": sampled["bounds"],
+        "width": width,
+        "height": height,
+        "scale_m": scale_m,
+        "vmin": vmin,
+        "vmax": vmax,
+        "otsu_threshold": otsu_threshold,
+        "water_mask": "per-scene Otsu on MNDWI; off-water pixels are alpha 0",
+        "water_pixels": int(finite.size),
+        "total_pixels": int(arr.size),
+        "title": index_title(index),
+        "description": index_description(index),
+    }
+    path.with_suffix(".json").write_text(json.dumps(meta))
+    return meta
+
+
 def render_index_map(
     aoi_geojson: dict,
     waterbody_id: str,

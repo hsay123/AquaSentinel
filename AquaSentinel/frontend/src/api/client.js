@@ -69,7 +69,7 @@ export const getAlerts = (waterbodyId, opts) =>
     ...opts,
   })
 
-/** Real rendered index heatmap PNG. 404/422 = genuinely unavailable. */
+/** Real rendered index heatmap PNG (decorated figure; used for evidence). */
 export const getIndexMap = (waterbodyId, index, date, opts) =>
   request(
     `/renders/index-map?waterbody_id=${encodeURIComponent(waterbodyId)}` +
@@ -77,7 +77,28 @@ export const getIndexMap = (waterbodyId, index, date, opts) =>
     { timeoutMs: 180_000, ...opts },
   )
 
-/** Real rendered true-colour composite. */
+/**
+ * Clean, georeferenced RGBA index overlay for the Leaflet ImageOverlay.
+ * Unlike /index-map this is exactly the data grid (no axes/colourbar/title) and
+ * off-water pixels are alpha 0, so it lines up with the reported bounds and lets
+ * the satellite imagery show through on land.
+ */
+export const getIndexOverlay = (waterbodyId, index, date, opts) =>
+  request(
+    `/renders/overlay?waterbody_id=${encodeURIComponent(waterbodyId)}` +
+    `&index=${encodeURIComponent(index)}&date=${encodeURIComponent(date)}`,
+    { timeoutMs: 180_000, ...opts },
+  )
+
+/** Clean, georeferenced true-colour raster for the map base layer. */
+export const getTrueColorRaster = (waterbodyId, date, opts) =>
+  request(
+    `/renders/true-color-raster?waterbody_id=${encodeURIComponent(waterbodyId)}` +
+    `&date=${encodeURIComponent(date)}`,
+    { timeoutMs: 180_000, ...opts },
+  )
+
+/** Real rendered true-colour composite (decorated figure; evidence use). */
 export const getTrueColor = (waterbodyId, date, opts) =>
   request(
     `/renders/true-color?waterbody_id=${encodeURIComponent(waterbodyId)}` +

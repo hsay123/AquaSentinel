@@ -148,6 +148,118 @@ def index_map(
     return out
 
 
+@router.get("/overlay")
+def overlay(
+    waterbody_id: str = Query(...),
+    index: str = Query(...),
+    date: str = Query(..., description="ISO date; nearest real scene is used"),
+):
+    """Clean, georeferenced RGBA index overlay for the Leaflet ImageOverlay.
+
+    Distinct from /renders/index-map, which returns a decorated matplotlib
+    figure for evidence use. This one is exactly the data grid with alpha 0
+    off-water, so it can be positioned at the reported bounds without offset and
+    lets the satellite imagery show through on land.
+    """
+    from backend.pipeline.render import render_index_overlay, resolve_scene
+
+    wb = _require_waterbody(waterbody_id)
+    index = index.lower()
+    if index not in ("ndti", "ndci", "fai", "mndwi"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported index '{index}'. Available: ndti, ndci, fai, mndwi",
+        )
+
+    resolved = resolve_scene(wb.aoi_geojson, date)
+    if resolved is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No Sentinel-2 acquisition near {date} for {waterbody_id}.",
+        )
+    _, actual_date = resolved
+
+    cached = _cached(f"{waterbody_id}_{index}_{actual_date}_overlay")
+    if cached is not None:
+        out = _serve(cached)
+        out.update({"index": index, "colormap": colormap_for(index).name, "alpha": "off-water = 0"})
+        return out
+
+    try:
+        meta = render_index_overlay(wb.aoi_geojson, waterbody_id, index, date, RENDER_DIR)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("overlay render failed")
+        raise HTTPException(status_code=502, detail=f"Render failed: {exc}") from exc
+
+    out = _serve(meta)
+    out.update({"index": index, "colormap": colormap_for(index).name, "alpha": "off-water = 0"})
+    return out
+
+
+    from backend.pipeline.render import render_true_color_raster, resolve_scene
+
+    resolved = resolve_scene(wb.aoi_geojson, date)
+    if resolved is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No Sentinel-2 acquisition near {date} for {waterbody_id}.",
+        )
+    _, actual_date = resolved
+
+    cached = _cached(f"{waterbody_id}_truecolor_{actual_date}_raster")
+    if cached is not None:
+        return _serve(cached)
+
+    try:
+        meta = render_true_color_raster(wb.aoi_geojson, waterbody_id, date, RENDER_DIR)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("true-color raster render failed")
+        raise HTTPException(status_code=502, detail=f"Render failed: {exc}") from exc
+
+    return _serve(meta)
+
+
+@router.get("/true-color-raster")
+def true_color_raster(
+    waterbody_id: str = Query(...),
+    date: str = Query(...),
+):
+    """Clean, georeferenced true-colour raster for the map base layer.
+
+    /true-color returns a decorated matplotlib figure (axes + title) for
+    evidence use, which misaligns when positioned at the AOI bounds. This is
+    exactly the data grid, so it sits correctly under the thematic overlay.
+    """
+    from backend.pipeline.render import render_true_color_raster, resolve_scene
+
+    wb = _require_waterbody(waterbody_id)
+    resolved = resolve_scene(wb.aoi_geojson, date)
+    if resolved is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No Sentinel-2 acquisition near {date} for {waterbody_id}.",
+        )
+    _, actual_date = resolved
+
+    cached = _cached(f"{waterbody_id}_truecolor_{actual_date}_raster")
+    if cached is not None:
+        return _serve(cached)
+
+    try:
+        meta = render_true_color_raster(wb.aoi_geojson, waterbody_id, date, RENDER_DIR)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("true-color raster render failed")
+        raise HTTPException(status_code=502, detail=f"Render failed: {exc}") from exc
+
+    return _serve(meta)
+
+
 @router.get("/true-color")
 def true_color(
     waterbody_id: str = Query(...),
