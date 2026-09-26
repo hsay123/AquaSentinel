@@ -237,16 +237,32 @@ def fetch_and_process_aoi(waterbody_id: str, config: dict) -> None:
     if all_observations:
         print(f"Saving {len(all_observations)} zone-observations to Parquet...")
         ts_store.append(all_observations)
-
-        # Compute and save baselines
         print("Computing seasonal baselines...")
-        # Need to query back to get DataFrame for baseline computation
-        for zone in zones:
-            df = ts_store.query(waterbody_id, zone["id"])
-            if not df.empty:
-                baseline_store.compute_and_save(waterbody_id, df)
+        recompute_baselines(waterbody_id, ts_store, baseline_store)
 
     print(f"Completed {waterbody_id}")
+
+
+def recompute_baselines(
+    waterbody_id: str,
+    ts_store: TimeseriesStore,
+    baseline_store: BaselineStore,
+) -> int:
+    """Recompute seasonal baselines for every zone already in the Parquet store.
+
+    Split out of ``fetch_and_process_aoi`` so baselines can be rebuilt from the
+    cache without re-fetching scenes from GEE (``--baselines-only``).
+    """
+    zone_ids = ts_store.get_all_zones(waterbody_id)
+    if not zone_ids:
+        print(f"  no cached zones for {waterbody_id}, skipping baselines")
+        return 0
+    for zone_id in zone_ids:
+        df = ts_store.query(waterbody_id, zone_id)
+        if not df.empty:
+            baseline_store.compute_and_save(waterbody_id, df)
+    print(f"  baselines computed for {len(zone_ids)} zones")
+    return len(zone_ids)
 
 
 def get_scene_date(img: ee.Image) -> date:
@@ -258,7 +274,7 @@ def get_scene_id(img: ee.Image) -> str:
     return img.get("system:index").getInfo()
 
 
-def main():
+def main(baselines_only: bool = False, force: bool = False):
     print("AquaSentinel Precompute Script")
     print("=" * 60)
     print("This will fetch REAL Sentinel-2 data from GEE for both demo AOIs")
@@ -270,6 +286,23 @@ def main():
     print("  - Sufficient GEE quota for ~40 scenes x 2 AOIs")
     print()
 
+    ts_store = TimeseriesStore(DATA_ROOT + "/timeseries")
+    baseline_store = BaselineStore(DATA_ROOT + "/baselines")
+
+    if baselines_only:
+        # Rebuild baselines from the existing cache: no GEE calls, no quota,
+        # seconds instead of minutes. Use after changing the baseline math.
+        print("Baselines-only mode: recomputing from the existing Parquet cache.")
+        print("(no GEE calls, no quota consumed)")
+        print()
+        for wb_id in DEMO_AOIS:
+            print(f"Baselines for {wb_id}...")
+            recompute_baselines(wb_id, ts_store, baseline_store)
+        print("\n" + "=" * 60)
+        print("BASELINES COMPLETE")
+        print("=" * 60)
+        return
+
     # Initialize GEE
     try:
         gee_init()
@@ -278,9 +311,16 @@ def main():
         print(f"FAILED to initialize GEE: {e}")
         print("Run 'earthengine authenticate' first.")
         sys.exit(1)
-
-    # Process each demo AOI
     for wb_id, config in DEMO_AOIS.items():
+        cached = ts_store.get_all_zones(wb_id)
+        if cached and not force:
+            # The store deduplicates on (waterbody_id, zone_id, date, scene_id),
+            # so a refetch is idempotent -- but it still costs minutes of GEE
+            # quota to recompute an AOI we already hold.
+            print(f"Skipping {wb_id}: {len(cached)} zones already cached "
+                  f"(use --force to refetch) — refreshing baselines instead")
+            recompute_baselines(wb_id, ts_store, baseline_store)
+            continue
         fetch_and_process_aoi(wb_id, config)
 
     print("\n" + "=" * 60)
@@ -291,4 +331,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # --baselines-only rebuilds baselines from the existing Parquet cache
+    # without touching GEE. See main().
+    main(baselines_only="--baselines-only" in sys.argv,
+         force="--force" in sys.argv)

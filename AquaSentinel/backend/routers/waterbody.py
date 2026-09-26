@@ -10,6 +10,7 @@ from backend.models.schemas import (
     WaterBodyCreate,
     WaterBodyResponse,
     ZoneResponse,
+    TimeSeriesPoint,
     TimeSeriesResponse,
 )
 from backend.cache import get_demo_waterbodies

@@ -222,6 +222,10 @@ class BaselineStore:
             return pd.DataFrame(columns=BASELINE_SCHEMA.names)
 
         df = observations_df.copy()
+        # The date column comes back from Parquet as object dtype holding
+        # datetime.date values, so .dt is unavailable. Coerce before taking
+        # .month. (Storing a plain date in Arrow also loses nothing.)
+        df["date"] = pd.to_datetime(df["date"])
         df["month"] = df["date"].dt.month
 
         index_cols = ["ndti", "ndci", "fai", "texture_score"]
@@ -251,6 +255,18 @@ class BaselineStore:
         if not baseline_df.empty:
             path = self._baseline_path(waterbody_id)
             path.parent.mkdir(parents=True, exist_ok=True)
+            # MERGE, don't overwrite. This method is called once per zone, and
+            # the whole waterbody shares one Parquet file -- writing the new
+            # frame wholesale silently discarded every previously computed zone,
+            # leaving only the last one that produced output.
+            if path.exists():
+                existing = pq.read_table(path).to_pandas()
+                # Drop any prior rows for the zones we are rewriting, so a
+                # recompute replaces rather than duplicates them.
+                touched = set(baseline_df["zone_id"])
+                existing = existing[~existing["zone_id"].isin(touched)]
+                baseline_df = pd.concat([existing, baseline_df], ignore_index=True)
+            baseline_df = baseline_df.sort_values(["zone_id", "index_name", "month"])
             table = pa.Table.from_pandas(baseline_df, schema=BASELINE_SCHEMA)
             pq.write_table(table, path)
 
