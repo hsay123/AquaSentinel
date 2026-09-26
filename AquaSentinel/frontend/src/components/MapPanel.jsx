@@ -1,23 +1,32 @@
 /**
- * Map panel: the primary interaction.
+ * Map panel: satellite base + index heatmap + on-map legend.
  *
- * Layers, all real:
- *   - basemap: OpenStreetMap tiles (no key, no watermark failure mode)
- *   - zone polygons: GET /waterbodies/{id}/zones (real cached grid geometry)
- *   - index heatmap: server-rendered PNG of the real per-pixel index for the
- *     selected date, placed at the real bounds the renderer reported
- *   - date navigator: steps ONLY through real scene dates from /stats
+ * Layers, bottom to top, all real:
+ *   1. base  : the real Sentinel-2 true-colour composite for the selected
+ *              water body and date (rendered by backend/pipeline/render.py).
+ *              OpenStreetMap tiles sit underneath purely as a fallback for
+ *              dates where no composite can be produced.
+ *   2. heatmap: the real per-pixel index raster for the same scene, at the
+ *              real bounds the renderer reported.
+ *   3. zones : the real persisted zone grid, clickable.
  *
- * Clicking a zone calls onSelectZone(zone_id) and that drives every other panel.
+ * Explicit z-index panes guarantee the heatmap sits above the imagery and the
+ * zone vectors above the heatmap, regardless of Leaflet's default ordering.
+ *
+ * Zone selection: exactly one zone can be selected (props.selectedZoneId is the
+ * single source of truth in App state). Hover opens a tooltip on that one layer
+ * and closes any previously open one, so two zone labels can never be visible
+ * at once. Hover is styled as a thin outline; selection is a solid fill — the
+ * two are visually distinct.
  */
 
-import { useEffect, useMemo, useState } from 'react'
-import { MapContainer, TileLayer, GeoJSON, ImageOverlay, useMap } from 'react-leaflet'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { MapContainer, TileLayer, GeoJSON, ImageOverlay, Pane, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
-import { CaretLeft, CaretRight, MapPin } from '@phosphor-icons/react'
-import { getIndexMap } from '../api/client.js'
-import { INDEX_META, fmtDate, fmtNum, severityOf } from '../lib/format.js'
+import { CaretLeft, CaretRight } from '@phosphor-icons/react'
+import { getIndexMap, getTrueColor } from '../api/client.js'
+import { INDEX_META, fmtDate, fmtNum } from '../lib/format.js'
 import { Skeleton, Unavailable, ErrorNote } from './States.jsx'
 
 const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
@@ -30,7 +39,7 @@ function FlyTo({ bounds }) {
   useEffect(() => {
     if (bounds && bounds.length === 4) {
       const [w, s, e, n] = bounds
-      map.fitBounds([[s, w], [n, e]], { padding: [40, 40] })
+      map.fitBounds([[s, w], [n, e]], { padding: [30, 30] })
     }
   }, [map, bounds])
   return null
@@ -47,29 +56,49 @@ function aoiBounds(geojson) {
   return [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)]
 }
 
+/** The API returns [S, W, N, E]; Leaflet ImageOverlay needs [[s,w],[n,e]]. */
+function toCorners(flat) {
+  if (!flat || flat.length !== 4) return null
+  return [[flat[0], flat[1]], [flat[2], flat[3]]]
+}
+
 export function MapPanel({
   waterbody, zones, selectedZoneId, onSelectZone, stats, loadingZones, zonesError,
 }) {
   const [index, setIndex] = useState('ndti')
   const sceneDates = stats?.scene_dates ?? []
   const [dateIdx, setDateIdx] = useState(sceneDates.length - 1)
+  const [showHeatmap, setShowHeatmap] = useState(true)
 
-  // Keep the date index valid when the water body (and its scene list) changes.
   useEffect(() => {
     setDateIdx(sceneDates.length - 1)
   }, [waterbody?.id, sceneDates.length])
 
   const date = sceneDates[dateIdx] ?? null
 
-  const [overlay, setOverlay] = useState({ state: 'idle', data: null, error: null })
+  const [base, setBase] = useState({ state: 'idle', data: null, error: null })
+  const [heat, setHeat] = useState({ state: 'idle', data: null, error: null })
+
+  // Real true-colour composite = the satellite base layer for this scene.
   useEffect(() => {
-    if (!waterbody || !date) { setOverlay({ state: 'idle', data: null, error: null }); return }
-    let cancelled = false
-    setOverlay({ state: 'loading', data: null, error: null })
+    if (!waterbody || !date) { setBase({ state: 'idle', data: null, error: null }); return }
+    let dead = false
+    setBase({ state: 'loading', data: null, error: null })
+    getTrueColor(waterbody.id, date)
+      .then((d) => { if (!dead) setBase(d ? { state: 'ready', data: d, error: null } : { state: 'unavailable', data: null, error: null }) })
+      .catch((e) => { if (!dead) setBase({ state: 'unavailable', data: null, error: e }) })
+    return () => { dead = true }
+  }, [waterbody?.id, date])
+
+  // Real per-pixel index heatmap for the same scene.
+  useEffect(() => {
+    if (!waterbody || !date) { setHeat({ state: 'idle', data: null, error: null }); return }
+    let dead = false
+    setHeat({ state: 'loading', data: null, error: null })
     getIndexMap(waterbody.id, index, date)
-      .then((d) => { if (!cancelled) setOverlay(d ? { state: 'ready', data: d, error: null } : { state: 'unavailable', data: null, error: null }) })
-      .catch((e) => { if (!cancelled) setOverlay({ state: 'unavailable', data: null, error: e }) })
-    return () => { cancelled = true }
+      .then((d) => { if (!dead) setHeat(d ? { state: 'ready', data: d, error: null } : { state: 'unavailable', data: null, error: null }) })
+      .catch((e) => { if (!dead) setHeat({ state: 'unavailable', data: null, error: e }) })
+    return () => { dead = true }
   }, [waterbody?.id, index, date])
 
   const geojson = useMemo(() => {
@@ -80,43 +109,93 @@ export function MapPanel({
         type: 'Feature',
         id: z.id,
         geometry: z.polygon,
-        properties: { id: z.id, area_m2: z.area_m2 },
+        properties: { id: z.id },
       })),
     }
   }, [zones])
 
+  // Track the one open tooltip so a second hover closes the first. Without this
+  // Leaflet leaves stale labels on screen and two zone IDs appear at once.
+  const openTipRef = useRef(null)
+  // zone_id -> leaflet layer. Used to restyle on selection without remounting
+  // the layer group.
+  const layerByIdRef = useRef(new Map())
+
   const onEachFeature = (feature, layer) => {
     const id = feature.properties.id
-    layer.bindTooltip(id, { sticky: true, className: 'zone-tip' })
+    layerByIdRef.current.set(id, layer)
+
     layer.on({
-      click: () => onSelectZone(id),
-      mouseover: (e) => e.target.setStyle({ weight: 2, color: '#38C8FF' }),
-      mouseout: (e) => e.target.setStyle({ weight: selectedZoneId === id ? 2.5 : 1, color: selectedZoneId === id ? '#38C8FF' : '#5BE0C0' }),
+      mouseover: (e) => {
+        if (openTipRef.current && openTipRef.current !== e.target) {
+          openTipRef.current.closeTooltip()
+        }
+        // Hover reads as a thin outline only; selection is the solid fill.
+        e.target.setStyle({ weight: 2, color: '#38C8FF', fillOpacity: 0.12 })
+        e.target.bringToFront?.()
+        e.target.bindTooltip(id, { className: 'zone-tip', sticky: false, direction: 'top' })
+        e.target.openTooltip()
+        openTipRef.current = e.target
+      },
+      mouseout: (e) => {
+        e.target.setStyle(styleForId(e.target.feature.properties.id))
+        e.target.closeTooltip()
+        if (openTipRef.current === e.target) openTipRef.current = null
+      },
+      click: (e) => {
+        L.DomEvent.stopPropagation(e)
+        // Selection is shown by the persistent highlight, so the hover tooltip
+        // is dismissed on click rather than left floating over the new zone.
+        e.target.closeTooltip()
+        if (openTipRef.current === e.target) openTipRef.current = null
+        onSelectZone(id)
+      },
     })
   }
 
-  const styleFor = (feature) => {
-    const id = feature.properties.id
+  // Single source of truth for the selected zone. Selection restyles exactly
+  // two layers (the previously selected and the new one) rather than remounting
+  // all 478 — remounting on every click destroyed the DOM the user had just
+  // clicked and made selection feel broken.
+  const styleForId = (id) => {
     const selected = id === selectedZoneId
     return {
-      // Zones are the monitored area; the reference's severity colour is
-      // reserved for zones that actually carry an alert, so un-flagged zones
-      // stay neutral rather than being painted a status colour they haven't earned.
-      color: selected ? '#38C8FF' : '#5BE0C0',
-      weight: selected ? 2.5 : 0.6,
-      opacity: selected ? 1 : 0.55,
+      color: selected ? '#38C8FF' : 'rgba(91, 224, 192, 0.55)',
+      weight: selected ? 2.5 : 0.5,
+      opacity: selected ? 1 : 0.7,
       fillColor: '#38C8FF',
-      fillOpacity: selected ? 0.18 : 0.04,
+      fillOpacity: selected ? 0.22 : 0.03,
     }
   }
 
+  const prevSelectedRef = useRef(selectedZoneId)
+  useEffect(() => {
+    const prev = prevSelectedRef.current
+    if (prev === selectedZoneId) return
+    const byId = layerByIdRef.current
+    if (prev && byId.has(prev)) byId.get(prev).setStyle(styleForId(prev))
+    if (selectedZoneId && byId.has(selectedZoneId)) {
+      const layer = byId.get(selectedZoneId)
+      layer.setStyle(styleForId(selectedZoneId))
+      layer.bringToFront?.()
+    }
+    prevSelectedRef.current = selectedZoneId
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedZoneId, zones])
+
+  const styleFor = (feature) => styleForId(feature.properties.id)
+
   const bounds = aoiBounds(waterbody?.aoi_geojson)
+  const baseCorners = toCorners(base.data?.bounds)
+  const heatCorners = toCorners(heat.data?.bounds)
+  const heatReady = showHeatmap && heat.state === 'ready' && heatCorners
+
+  const legendData = heat.state === 'ready' ? heat.data : null
 
   return (
     <section className="panel map-panel">
       <div className="panel-head">
         <div className="panel-title">
-          <MapPin size={14} weight="duotone" />
           <span>{waterbody ? waterbody.name : 'Select a water body'}</span>
         </div>
         <div className="map-controls">
@@ -133,6 +212,14 @@ export function MapPanel({
               </button>
             ))}
           </div>
+          <label className="map-toggle" title="Show or hide the index overlay">
+            <input
+              type="checkbox"
+              checked={showHeatmap}
+              onChange={(e) => setShowHeatmap(e.target.checked)}
+            />
+            Overlay
+          </label>
         </div>
       </div>
 
@@ -140,38 +227,44 @@ export function MapPanel({
         {waterbody ? (
           <MapContainer
             center={[28.56, 77.31]}
-            zoom={11}
+            zoom={12}
             scrollWheelZoom
             className="map"
             zoomControl={false}
             attributionControl={false}
           >
-            <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} maxZoom={19} />
+            {/* Fallback context, beneath the real imagery. */}
+            <Pane name="osm" style={{ zIndex: 190 }}>
+              <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} maxZoom={19} />
+            </Pane>
+
+            {/* Real Sentinel-2 true-colour composite = the base layer. */}
+            <Pane name="satellite" style={{ zIndex: 210 }}>
+              {base.state === 'ready' && baseCorners && (
+                <ImageOverlay url={base.data.image_url} bounds={baseCorners} opacity={1} />
+              )}
+            </Pane>
+
+            {/* Real per-pixel index raster, above the imagery. */}
+            <Pane name="heatmap" style={{ zIndex: 320 }}>
+              {heatReady && (
+                <ImageOverlay url={heat.data.image_url} bounds={heatCorners} opacity={0.75} />
+              )}
+            </Pane>
+
+            {/* Zone vectors stay on top so they remain clickable. */}
+            <Pane name="zones" style={{ zIndex: 430 }}>
+              {geojson && (
+                <GeoJSON
+                  key={waterbody.id}
+                  data={geojson}
+                  style={styleFor}
+                  onEachFeature={onEachFeature}
+                />
+              )}
+            </Pane>
+
             <FlyTo bounds={bounds} />
-
-            {/* Real server-rendered index raster, placed at its real bounds.
-                The API returns [S, W, N, E]; Leaflet's ImageOverlay needs two
-                corners [[s, w], [n, e]]. Passing the flat array throws inside
-                LatLngBounds. */}
-            {overlay.state === 'ready' && overlay.data?.bounds?.length === 4 && (
-              <ImageOverlay
-                url={overlay.data.image_url}
-                bounds={[
-                  [overlay.data.bounds[0], overlay.data.bounds[1]],
-                  [overlay.data.bounds[2], overlay.data.bounds[3]],
-                ]}
-                opacity={0.85}
-              />
-            )}
-
-            {geojson && (
-              <GeoJSON
-                key={`${waterbody.id}-${selectedZoneId}`}
-                data={geojson}
-                style={styleFor}
-                onEachFeature={onEachFeature}
-              />
-            )}
           </MapContainer>
         ) : (
           <div className="map-placeholder">No water body selected.</div>
@@ -187,9 +280,7 @@ export function MapPanel({
           >
             <CaretLeft size={14} weight="bold" />
           </button>
-          <span className="date-nav-label mono">
-            {date ? fmtDate(date) : '—'}
-          </span>
+          <span className="date-nav-label mono">{date ? fmtDate(date) : '—'}</span>
           <button
             type="button"
             disabled={dateIdx >= sceneDates.length - 1}
@@ -199,54 +290,59 @@ export function MapPanel({
             <CaretRight size={14} weight="bold" />
           </button>
         </div>
-      </div>
 
-      {/* Legend carries the real index name and the real min/max of the data drawn. */}
-      <div className="map-legend">
-        {overlay.state === 'loading' && <Skeleton lines={1} height={14} />}
-        {overlay.state === 'ready' && overlay.data && (
-          <>
-            <div className="legend-head">
-              <span className="legend-title">{overlay.data.title ?? INDEX_META[index].label}</span>
-              <span className="legend-range mono">
-                {fmtNum(overlay.data.vmin, 3)} – {fmtNum(overlay.data.vmax, 3)}
-              </span>
-            </div>
-            <div className="legend-bar" style={{ background: `linear-gradient(to right, ${legendStops(index)})` }} />
-            <div className="legend-note">
-              Per-pixel {INDEX_META[index].short} from the real scene
-              {' '}<span className="mono">{String(overlay.data.scene_id).split('/').pop()}</span>
-              {overlay.data.scale_m ? ` · sampled at ${overlay.data.scale_m} m` : ''}
-            </div>
-            {overlay.data.description && (
-              <div className="legend-desc">{overlay.data.description}</div>
-            )}
-          </>
-        )}
-        {overlay.state === 'unavailable' && (
-          <Unavailable
-            compact
-            title={`No ${INDEX_META[index].short} raster for this date`}
-            reason={
-              overlay.error?.message ??
-              'The scene has no usable water pixels after cloud and water masking.'
-            }
-            source="backend/pipeline/render.py"
-          />
-        )}
-      </div>
+        {/* Legend lives ON the map, in a corner — not in a panel underneath. */}
+        <div className="map-legend-box">
+          <div className="legend-title">
+            {legendData ? (legendData.title ?? INDEX_META[index].label) : INDEX_META[index].label}
+          </div>
 
-      {loadingZones && (
-        <div className="map-status"><Skeleton lines={1} height={12} /></div>
-      )}
-      {zonesError && (
-        <div className="map-status"><ErrorNote error={zonesError} /></div>
-      )}
-      {!loadingZones && !zonesError && zones?.length > 0 && (
-        <div className="map-status mono">
-          {zones.length} real zones cached · {selectedZoneId ? `${selectedZoneId} selected` : 'click a zone'}
+          {heat.state === 'loading' && <Skeleton lines={1} height={10} />}
+
+          {legendData && (
+            <>
+              <div
+                className="legend-bar"
+                style={{ background: `linear-gradient(to right, ${legendStops(index)})` }}
+              />
+              <div className="legend-ends">
+                <span className="mono">Low {fmtNum(legendData.vmin, 2)}</span>
+                <span className="mono">{fmtNum(legendData.vmax, 2)} High</span>
+              </div>
+              <div className="legend-scene mono">
+                {String(legendData.scene_id).split('/').pop()?.slice(0, 22)}
+              </div>
+            </>
+          )}
+
+          {heat.state === 'unavailable' && (
+            <Unavailable
+              compact
+              title={`No ${INDEX_META[index].short} for this date`}
+              reason={heat.error?.message ?? 'No usable water pixels after cloud and water masking.'}
+            />
+          )}
+
+          <div className="legend-foot">
+            {base.state === 'ready'
+              ? 'Base: real Sentinel-2 true colour'
+              : base.state === 'loading'
+                ? 'Base: loading composite…'
+                : 'Base: street tiles (composite unavailable)'}
+          </div>
         </div>
-      )}
+      </div>
+
+      <div className="map-status mono">
+        {loadingZones
+          ? 'loading zone grid…'
+          : zonesError
+            ? null
+            : zones?.length
+              ? `${zones.length} real zones cached · ${selectedZoneId ?? 'none'} selected`
+              : 'no zone geometry cached'}
+        {zonesError ? <ErrorNote error={zonesError} /> : null}
+      </div>
     </section>
   )
 }
@@ -259,5 +355,5 @@ function legendStops(index) {
     fai: ['#1a1a1a', '#4a1486', '#c2185b', '#ff7043', '#ffd54f', '#f0f4c3'],
   }
   const p = palettes[index] ?? palettes.ndti
-  return p.map((c) => `${c} ${(p.indexOf(c) / (p.length - 1)) * 100}%`).join(', ')
+  return p.map((c, i) => `${c} ${(i / (p.length - 1)) * 100}%`).join(', ')
 }

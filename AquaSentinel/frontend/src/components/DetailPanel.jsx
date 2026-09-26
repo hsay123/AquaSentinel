@@ -19,6 +19,7 @@ import {
   fmtArea, fmtDate, fmtNum, severityOf, worstConfidence,
 } from '../lib/format.js'
 import { Skeleton, Unavailable, EmptyState } from './States.jsx'
+import { TimeSeriesChart } from './TimeSeriesChart.jsx'
 
 const TABS = ['Overview', 'Time Series', 'Alerts', 'Gallery', 'Details']
 
@@ -37,6 +38,7 @@ function StatRow({ icon: Icon, label, value, note }) {
 
 export function DetailPanel({
   waterbody, stats, loading, alerts, selectedZoneId, onSelectAlert, selectedAlert,
+  series, seriesLoading, seriesError, index, onIndexChange, zoneAlert,
 }) {
   const [tab, setTab] = useState('Overview')
   if (!waterbody) {
@@ -47,8 +49,11 @@ export function DetailPanel({
     )
   }
 
+  // A body with no cached scenes must not present a confident green "Low":
+  // that implies "checked, fine" rather than "not analysed yet".
+  const hasScenes = Number(stats?.scene_count ?? 0) > 0
   const conf = worstConfidence(alerts)
-  const sev = severityOf(conf)
+  const sev = hasScenes ? severityOf(conf) : { tier: 'No data', color: 'var(--text-muted)' }
 
   return (
     <section className="panel detail-panel">
@@ -63,6 +68,11 @@ export function DetailPanel({
           <MapPin size={12} weight="duotone" />
           {waterbody.id}
         </div>
+        {!hasScenes && (
+          <div className="detail-pending">
+            Processing — historical data not yet available for this water body.
+          </div>
+        )}
         {waterbody.description && (
           <p className="detail-desc">{waterbody.description}</p>
         )}
@@ -118,18 +128,44 @@ export function DetailPanel({
         )}
 
         {tab === 'Time Series' && (
-          stats?.scene_count ? (
-            <div className="scene-date-list">
-              <div className="scene-date-head">
-                {stats.scene_count} real acquisition dates (newest first)
-              </div>
-              {stats.scene_dates.slice().reverse().slice(0, 24).map((d) => (
-                <div key={d} className="scene-date mono">{fmtDate(d)}</div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState title="No cached time series" detail="Run the precompute for this water body." />
-          )
+          <>
+            {/* The tab's primary content is the real chart for the selected
+                zone. It used to be a bare list of the 48 acquisition dates —
+                real data rendered as an unusable wall of text. */}
+            {selectedZoneId ? (
+              <TimeSeriesChart
+                series={series}
+                index={index}
+                loading={seriesLoading}
+                error={seriesError}
+                alert={zoneAlert}
+                onIndexChange={onIndexChange}
+                height={190}
+              />
+            ) : (
+              <Unavailable
+                title="No zone selected"
+                reason="Click a zone on the map to plot its real observations."
+                source="GET /waterbodies/{id}/timeseries"
+              />
+            )}
+
+            {/* The date list stays available, demoted to a scrollable table. */}
+            {stats?.scene_count ? (
+              <details className="date-details">
+                <summary className="date-summary mono">
+                  {stats.scene_count} real acquisition dates (newest first)
+                </summary>
+                <div className="scene-date-list">
+                  {stats.scene_dates.slice().reverse().map((d) => (
+                    <div key={d} className="scene-date mono">{fmtDate(d)}</div>
+                  ))}
+                </div>
+              </details>
+            ) : (
+              <EmptyState title="No cached time series" detail="Run the precompute for this water body." />
+            )}
+          </>
         )}
 
         {tab === 'Alerts' && (

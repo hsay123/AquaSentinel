@@ -14,7 +14,8 @@
  * highlight, the indicator tiles, the time series and the before/after pair.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Broadcast } from '@phosphor-icons/react'
 import {
   getHealth, getSummary, getWaterbodies, getZones, getWaterbodyStats,
   getTimeseries, getAlerts,
@@ -76,14 +77,29 @@ export default function App() {
   }, [])
 
   // ---- per water body: stats (scene dates, area) ------------------------
+  // Fetched for EVERY body, not just the selected one. Previously only the
+  // selected body's stats were loaded, so the sidebar showed the other body as
+  // "area unavailable" forever — which reads as a data failure when it was just
+  // never requested.
   useEffect(() => {
-    if (!selectedId) return
+    if (waterbodies.length === 0) return
     let dead = false
-    getWaterbodyStats(selectedId)
-      .then((s) => { if (!dead && s) setStatsById((p) => ({ ...p, [selectedId]: s })) })
-      .catch(() => {})
+    Promise.all(
+      waterbodies.map((wb) =>
+        getWaterbodyStats(wb.id)
+          .then((s) => (s ? [wb.id, s] : null))
+          .catch(() => null),
+      ),
+    ).then((pairs) => {
+      if (dead) return
+      setStatsById((prev) => {
+        const next = { ...prev }
+        for (const p of pairs) if (p) next[p[0]] = p[1]
+        return next
+      })
+    })
     return () => { dead = true }
-  }, [selectedId])
+  }, [waterbodies])
 
   // ---- per water body: zone geometry (the map's click targets) -----------
   useEffect(() => {
@@ -118,15 +134,25 @@ export default function App() {
   }, [selectedId])
 
   // ---- selected zone: time series ---------------------------------------
+  // Guarded by a request sequence, not a `dead` closure flag. The flag version
+  // left `seriesLoading` stuck at true whenever the effect was cleaned up before
+  // the response arrived, which hangs the panel on a skeleton forever — and
+  // happens in normal use when two zones are clicked in quick succession.
+  const seriesReqRef = useRef(0)
   useEffect(() => {
-    if (!selectedId || !selectedZoneId) { setSeries(null); return }
-    let dead = false
-    setSeriesLoading(true); setSeriesError(null)
+    if (!selectedId || !selectedZoneId) {
+      seriesReqRef.current += 1
+      setSeries(null)
+      setSeriesLoading(false)
+      return
+    }
+    const reqId = ++seriesReqRef.current
+    setSeriesLoading(true)
+    setSeriesError(null)
     getTimeseries(selectedId, selectedZoneId, tsIndex)
-      .then((d) => { if (!dead) setSeries(d?.points ?? null) })
-      .catch((e) => { if (!dead) setSeriesError(e) })
-      .finally(() => { if (!dead) setSeriesLoading(false) })
-    return () => { dead = true }
+      .then((d) => { if (seriesReqRef.current === reqId) setSeries(d?.points ?? null) })
+      .catch((e) => { if (seriesReqRef.current === reqId) setSeriesError(e) })
+      .finally(() => { if (seriesReqRef.current === reqId) setSeriesLoading(false) })
   }, [selectedId, selectedZoneId, tsIndex])
 
   // Keep a selected alert only while it still belongs to the water body.
@@ -140,6 +166,11 @@ export default function App() {
   const onSelectAlert = useCallback((a) => setSelectedAlert(a), [])
 
   // The alert belonging to the selected zone, for the time-series callout.
+  // A panel must not claim "no real observations" while the zone grid or the
+  // first series request is still in flight — that reads as a data failure when
+  // it is just "not loaded yet". Fold both into the loading flag.
+  const seriesPending = seriesLoading || zonesLoading || !selectedZoneId
+
   const zoneAlert = useMemo(
     () => alerts.find((a) => a.zone_id === selectedZoneId) ?? null,
     [alerts, selectedZoneId],
@@ -163,6 +194,30 @@ export default function App() {
       />
 
       <main className="main">
+        {/* Hero / branding wrapper. Purely presentational — every number in the
+            KPI strip below it comes from the backend. */}
+        <div className="hero">
+          <h1 className="hero-tagline">
+            Monitor. Detect. <span>Explain.</span>
+          </h1>
+          <p className="hero-sub">
+            Satellite-based water quality and contamination early warning. Every
+            index on this dashboard is computed from real Sentinel-2 L2A surface
+            reflectance retrieved from Google Earth Engine.
+          </p>
+          <div className="hero-badges">
+            <span className="hero-badge is-real">
+              <Broadcast size={11} weight="duotone" /> Powered by Sentinel-2
+            </span>
+            {summary?.as_of && (
+              <span className="hero-badge">
+                As of {new Date(`${summary.as_of}T00:00:00Z`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}
+              </span>
+            )}
+            <span className="hero-badge">No synthetic data</span>
+          </div>
+        </div>
+
         <header className="topbar">
           <KpiStrip
             summary={summary}
@@ -203,14 +258,20 @@ export default function App() {
             selectedZoneId={selectedZoneId}
             onSelectAlert={onSelectAlert}
             selectedAlert={selectedAlert}
+            series={series}
+            seriesLoading={seriesPending}
+            seriesError={seriesError}
+            index={tsIndex}
+            onIndexChange={setTsIndex}
+            zoneAlert={zoneAlert}
           />
 
-          <IndicatorTiles latestPoint={latestPoint} loading={seriesLoading} />
+          <IndicatorTiles latestPoint={latestPoint} loading={seriesPending} />
 
           <TimeSeriesPanel
             series={series}
             index={tsIndex}
-            loading={seriesLoading}
+            loading={seriesPending}
             error={seriesError}
             alert={activeAlert}
             onIndexChange={setTsIndex}

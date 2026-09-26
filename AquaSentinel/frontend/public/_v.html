@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+  <body>
+    <div id="root"></div>
+    <script>
+      // jsdom has no fetch. Minimal fetch-over-XHR shim so the real app can
+      // complete its API round-trip against the vite proxy.
+      window.fetch = function (input, init) {
+        var url = typeof input === 'string' ? input : input.url
+        return new Promise(function (resolve, reject) {
+          var xhr = new XMLHttpRequest()
+          xhr.open(init && init.method ? init.method : 'GET', url, true)
+          if (init && init.headers) {
+            Object.keys(init.headers).forEach(function (h) {
+              xhr.setRequestHeader(h, init.headers[h])
+            })
+          }
+          xhr.onload = function () {
+            resolve({
+              ok: xhr.status >= 200 && xhr.status < 300,
+              status: xhr.status,
+              text: function () { return Promise.resolve(xhr.responseText) },
+              json: function () { return Promise.resolve(JSON.parse(xhr.responseText)) },
+            })
+          }
+          xhr.onerror = function () { reject(new Error('network error: ' + url)) }
+          xhr.send(init && init.body ? init.body : null)
+        })
+      }
+    </script>
+    <script src="/_v.js"></script>
+  </body>
+</html>

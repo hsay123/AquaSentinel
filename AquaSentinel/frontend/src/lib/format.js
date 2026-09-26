@@ -37,6 +37,34 @@ export function severityOf(confidence) {
   return CONFIDENCE_TO_TIER[confidence] ?? CONFIDENCE_TO_TIER.none
 }
 
+/**
+ * Sidebar / water-body status.
+ *
+ * A body with no cached observations gets an explicit "No data yet" state, NOT
+ * a green "Low" dot. `worstConfidence([])` returns 'none', which maps to the
+ * green Low tier; showing that beside "area unavailable" implies "checked and
+ * fine" when the truth is "not analysed yet". Anything without cached scenes is
+ * therefore surfaced as a neutral pending state.
+ */
+export function bodyStatus(stats, confidence) {
+  const hasScenes = Number(stats?.scene_count ?? 0) > 0
+  if (!hasScenes) {
+    return {
+      kind: 'no-data',
+      label: 'No data yet',
+      color: 'var(--text-muted)',
+      note: 'Historical data not yet available',
+    }
+  }
+  const sev = severityOf(confidence ?? 'none')
+  return {
+    kind: 'analysed',
+    label: sev.tier,
+    color: sev.color,
+    note: `${stats.scene_count} real scene${stats.scene_count === 1 ? '' : 's'}`,
+  }
+}
+
 /** The trend rule, applied identically everywhere:
  *  (latest value - seasonal baseline mean) / |baseline mean| * 100
  *  Returns null when it cannot be computed honestly (no baseline, zero mean,

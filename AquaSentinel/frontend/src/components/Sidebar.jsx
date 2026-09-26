@@ -7,7 +7,7 @@
  */
 
 import { Broadcast, Drop, Graph, Info, MapTrifold, Siren, Stack, Warning } from '@phosphor-icons/react'
-import { severityOf, worstConfidence, fmtArea } from '../lib/format.js'
+import { bodyStatus, worstConfidence, fmtArea } from '../lib/format.js'
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: Graph, enabled: true },
@@ -47,7 +47,9 @@ export function Sidebar({
             >
               <Icon size={15} weight="duotone" />
               <span>{item.label}</span>
-              {!item.enabled && <span className="nav-soon">soon</span>}
+              {/* Neutral, non-numeric. Never surface an HTTP status or a
+                  fabricated count here. */}
+              {!item.enabled && <span className="nav-soon">Coming soon</span>}
             </button>
           )
         })}
@@ -60,26 +62,29 @@ export function Sidebar({
             <div className="wb-empty">No water bodies registered.</div>
           )}
           {waterbodies.map((wb) => {
-            const conf = worstConfidence(alertsById?.[wb.id] ?? [])
-            const sev = severityOf(conf)
             const stats = statsById?.[wb.id]
+            const conf = worstConfidence(alertsById?.[wb.id] ?? [])
+            const st = bodyStatus(stats, conf)
             return (
               <button
                 key={wb.id}
                 type="button"
-                className={`wb-row ${selectedId === wb.id ? 'is-active' : ''}`}
+                className={`wb-row ${selectedId === wb.id ? 'is-active' : ''} ${st.kind === 'no-data' ? 'is-pending' : ''}`}
                 onClick={() => onSelect(wb.id)}
+                title={st.note}
               >
-                <span className="wb-dot" style={{ background: sev.color }} aria-hidden />
+                <span className="wb-dot" style={{ background: st.color }} aria-hidden />
                 <span className="wb-text">
                   <span className="wb-name">{wb.name}</span>
                   <span className="wb-meta mono">
-                    {stats?.water_area_km2 != null
-                      ? fmtArea(stats.water_area_km2)
-                      : 'area unavailable'}
+                    {st.kind === 'no-data'
+                      ? st.note
+                      : stats?.water_area_km2 != null
+                        ? fmtArea(stats.water_area_km2)
+                        : 'area unavailable'}
                   </span>
                 </span>
-                <span className="wb-tier" style={{ color: sev.color }}>{sev.tier}</span>
+                <span className="wb-tier" style={{ color: st.color }}>{st.label}</span>
               </button>
             )
           })}
