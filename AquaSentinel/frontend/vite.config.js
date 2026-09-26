@@ -12,22 +12,29 @@ import react from '@vitejs/plugin-react'
 // machine talks to the backend the same way the dev server does.
 const BACKEND = process.env.VITE_BACKEND_ORIGIN || 'http://localhost:8000'
 
-const apiProxy = {
+// The backend serves the real Sentinel-2 composites under /render-assets and the
+// per-alert evidence pair under /evidence-assets. They must be proxied too: the
+// SPA fallback answers any unknown path with index.html and a 200, so an
+// unproxied <img> fails to decode silently and the map quietly falls back to
+// street tiles while the legend still claims "real Sentinel-2 true colour".
+const proxy = {
   '/api': {
     target: BACKEND,
     changeOrigin: true,
     rewrite: (path) => path.replace(/^\/api/, ''),
   },
+  '/render-assets': { target: BACKEND, changeOrigin: true },
+  '/evidence-assets': { target: BACKEND, changeOrigin: true },
 }
 
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    proxy: apiProxy,
+    proxy,
   },
   preview: {
     port: 4173,
-    proxy: apiProxy,
+    proxy,
   },
 })

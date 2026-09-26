@@ -27,7 +27,8 @@ import L from 'leaflet'
 import { ArrowsOut, CaretLeft, CaretRight } from '@phosphor-icons/react'
 import { getIndexOverlay, getTrueColorRaster } from '../api/client.js'
 import { INDEX_META, fmtDate, fmtNum } from '../lib/format.js'
-import { Skeleton, Unavailable, ErrorNote } from './States.jsx'
+import { colorStops } from '../lib/colormaps.js'
+import { Skeleton, ErrorNote } from './States.jsx'
 
 const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
 const OSM_ATTRIBUTION =
@@ -80,10 +81,18 @@ function toCorners(flat) {
   return [[flat[0], flat[1]], [flat[2], flat[3]]]
 }
 
+/**
+ * The map body: a bounded, rounded card that fills its grid cell, with the
+ * index legend DOCKED in a footer strip rather than floating over the imagery
+ * (an overlay box hid the very pixels the user was trying to read).
+ *
+ * `index` / `onIndexChange` are owned by the app so the raster overlay, the
+ * indicator cards and the time-series chart always read the same indicator.
+ */
 export function MapPanel({
   waterbody, zones, selectedZoneId, onSelectZone, stats, loadingZones, zonesError,
+  index, onIndexChange,
 }) {
-  const [index, setIndex] = useState('ndti')
   const sceneDates = stats?.scene_dates ?? []
   const [dateIdx, setDateIdx] = useState(sceneDates.length - 1)
   const [showHeatmap, setShowHeatmap] = useState(true)
@@ -216,13 +225,7 @@ export function MapPanel({
   const legendData = heat.state === 'ready' ? heat.data : null
 
   return (
-    <section className="map-container">
-      {false && <div className="panel-head">
-        <div className="panel-title">
-          <span>{waterbody ? waterbody.name : 'Select a water body'}</span>
-        </div>
-      </div>}
-
+    <div className="map-body">
       <div className="map-canvas">
         {!bounds ? (
           <div className="map-loading">
@@ -273,8 +276,9 @@ export function MapPanel({
           </MapContainer>
         )}
 
-        {/* Map overlays — all absolutely positioned inside .map-canvas, whose
-            nearest positioned ancestor is .map-container. */}
+        {/* Map chrome — positioned inside .map-canvas, which is the nearest
+            positioned ancestor. These are controls, not panels: nothing that
+            reports data floats over the imagery. */}
         <div className="map-top-controls">
           <div className="seg">
             {['ndti', 'ndci', 'fai'].map((k) => (
@@ -282,7 +286,7 @@ export function MapPanel({
                 key={k}
                 type="button"
                 className={index === k ? 'is-active' : ''}
-                onClick={() => setIndex(k)}
+                onClick={() => onIndexChange(k)}
                 title={INDEX_META[k].label}
               >
                 {INDEX_META[k].short}
@@ -319,37 +323,38 @@ export function MapPanel({
             <CaretRight size={14} weight="bold" />
           </button>
         </div>
+      </div>
 
-        {/* Legend lives ON the map, in a corner — not in a panel underneath. */}
-        <div className="map-legend-box map-legend">
-          <div className="legend-title">
-            {legendData ? (legendData.title ?? INDEX_META[index].label) : INDEX_META[index].label}
+      {/* Docked footer: the index colourbar and the zone status live in normal
+          flow under the map, so the raster is never covered by the key that
+          explains it. */}
+      <div className="map-foot">
+        <div className="map-legend">
+          <div className="legend-head">
+            <span className="legend-title">
+              {legendData ? (legendData.title ?? INDEX_META[index].label) : INDEX_META[index].label}
+            </span>
+            {legendData && (
+              <span className="legend-range mono">
+                Low {fmtNum(legendData.vmin, 2)} · {fmtNum(legendData.vmax, 2)} High
+              </span>
+            )}
           </div>
 
-          {heat.state === 'loading' && <Skeleton lines={1} height={10} />}
+          {heat.state === 'loading' && <Skeleton lines={1} height={8} />}
 
           {legendData && (
-            <>
-              <div
-                className="legend-bar"
-                style={{ background: `linear-gradient(to right, ${legendStops(index)})` }}
-              />
-              <div className="legend-ends">
-                <span className="mono">Low {fmtNum(legendData.vmin, 2)}</span>
-                <span className="mono">{fmtNum(legendData.vmax, 2)} High</span>
-              </div>
-              <div className="legend-scene mono">
-                {String(legendData.scene_id).split('/').pop()?.slice(0, 22)}
-              </div>
-            </>
+            <div
+              className="legend-bar"
+              style={{ background: `linear-gradient(to right, ${colorStops(index)})` }}
+            />
           )}
 
           {heat.state === 'unavailable' && (
-            <Unavailable
-              compact
-              title={`No ${INDEX_META[index].short} for this date`}
-              reason={heat.error?.message ?? 'No usable water pixels after cloud and water masking.'}
-            />
+            <div className="legend-unavailable">
+              No {INDEX_META[index].short} overlay for this date —{' '}
+              {heat.error?.message ?? 'no usable water pixels after cloud and water masking.'}
+            </div>
           )}
 
           <div className="legend-foot">
@@ -358,31 +363,22 @@ export function MapPanel({
               : base.state === 'loading'
                 ? 'Base: loading composite…'
                 : 'Base: street tiles (composite unavailable)'}
+            {legendData?.scene_id
+              ? ` · scene ${String(legendData.scene_id).split('/').pop()?.slice(0, 22)}`
+              : ''}
           </div>
         </div>
-      </div>
 
-      <div className="map-status mono">
-        {loadingZones
-          ? 'loading zone grid…'
-          : zonesError
-            ? null
-            : zones?.length
-              ? `${zones.length} real zones cached · ${selectedZoneId ?? 'none'} selected`
-              : 'no zone geometry cached'}
-        {zonesError ? <ErrorNote error={zonesError} /> : null}
+        <div className="map-status mono">
+          {loadingZones
+            ? 'loading zone grid…'
+            : zonesError
+              ? <ErrorNote error={zonesError} />
+              : zones?.length
+                ? `${zones.length} real zones cached · ${selectedZoneId ?? 'none'} selected`
+                : 'no zone geometry cached'}
+        </div>
       </div>
-    </section>
+    </div>
   )
-}
-
-/** CSS gradient stops mirroring render.py's colormaps. */
-function legendStops(index) {
-  const palettes = {
-    ndti: ['#08306b', '#3182bd', '#bdd7e7', '#fdd0a2', '#fd8d3c', '#a63603'],
-    ndci: ['#08306b', '#2171b5', '#41b6c4', '#d9f0d3', '#fec44f', '#7f0000'],
-    fai: ['#1a1a1a', '#4a1486', '#c2185b', '#ff7043', '#ffd54f', '#f0f4c3'],
-  }
-  const p = palettes[index] ?? palettes.ndti
-  return p.map((c, i) => `${c} ${(i / (p.length - 1)) * 100}%`).join(', ')
 }

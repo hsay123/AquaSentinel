@@ -69,6 +69,21 @@ export const getAlerts = (waterbodyId, opts) =>
     ...opts,
   })
 
+/**
+ * Real before/after evidence pair for one flagged zone/date.
+ *
+ * The alert feed deliberately does not render Earth Engine imagery inline (that
+ * stalled the feed), so the two thumbnails are fetched here, on demand, only
+ * for the alert the user actually has selected. Results are cached on disk by
+ * the backend, so a repeat selection is instant.
+ */
+export const getAlertEvidence = (waterbodyId, zoneId, date, opts) =>
+  request(
+    `/alerts/evidence?waterbody_id=${encodeURIComponent(waterbodyId)}` +
+    `&zone_id=${encodeURIComponent(zoneId)}&date=${encodeURIComponent(date)}`,
+    { timeoutMs: 240_000, ...opts },
+  )
+
 /** Real rendered index heatmap PNG (decorated figure; used for evidence). */
 export const getIndexMap = (waterbodyId, index, date, opts) =>
   request(

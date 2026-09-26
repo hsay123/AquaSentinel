@@ -6,7 +6,7 @@
  * dismissable bottom bar, so it stays visible on every view.
  */
 
-import { Drop, Graph, Info, MapTrifold, ShieldCheck, Siren, Stack, Warning } from '@phosphor-icons/react'
+import { Drop, Graph, Info, MapTrifold, ShieldCheck, Siren, Stack } from '@phosphor-icons/react'
 import { bodyStatus, worstConfidence, fmtArea } from '../lib/format.js'
 
 const NAV = [

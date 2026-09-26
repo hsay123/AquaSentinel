@@ -14,7 +14,9 @@
  */
 
 import { useState } from 'react'
-import { MapPin, Ruler, CalendarBlank, GridFour, Camera } from '@phosphor-icons/react'
+import {
+  MapPin, Ruler, CalendarBlank, GridFour, Camera, Siren, Warning, ArrowRight,
+} from '@phosphor-icons/react'
 import {
   fmtArea, fmtDate, fmtNum, severityOf, worstConfidence,
 } from '../lib/format.js'
@@ -32,6 +34,73 @@ function StatRow({ icon: Icon, label, value, note }) {
         <div className="stat-value mono">{value}</div>
         {note && <div className="stat-note">{note}</div>}
       </div>
+    </div>
+  )
+}
+
+/**
+ * The three most recent alerts for this water body, in the Overview tab.
+ * Same records the sidebar pills and the Alerts tab draw from — the feed is
+ * already sorted newest-first — so a row here can be clicked to select the
+ * alert, which drives the chart, the indicator cards and the before/after pair.
+ */
+function RecentAlerts({ alerts, selectedAlert, onSelectAlert, onViewAll }) {
+  if (!alerts?.length) {
+    return (
+      <div className="recent-block">
+        <div className="recent-head">
+          <span className="recent-title">Recent Alerts</span>
+        </div>
+        <EmptyState
+          title="No alerts in the cached window"
+          detail="Anomaly detection found no flagged zone for this water body."
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="recent-block">
+      <div className="recent-head">
+        <span className="recent-title">Recent Alerts</span>
+        <button type="button" className="view-all" onClick={onViewAll}>
+          View all <ArrowRight size={11} weight="bold" />
+        </button>
+      </div>
+
+      <ul className="recent-list">
+        {alerts.slice(0, 3).map((a) => {
+          const s = severityOf(a.confidence)
+          const z = a.indicators?.find((i) => i.z_score != null)
+          const Icon = a.confidence === 'high' ? Warning : Siren
+          return (
+            <li key={a.id}>
+              <button
+                type="button"
+                className={`recent-item ${selectedAlert?.id === a.id ? 'is-active' : ''}`}
+                onClick={() => onSelectAlert(a)}
+                title={a.explanation}
+              >
+                <Icon size={14} weight="duotone" className="recent-icon" style={{ color: s.color }} />
+                <span className="recent-body">
+                  <span className="recent-line">
+                    <span className="recent-alert-title">
+                      {z ? `${z.name.toUpperCase()} anomaly` : 'Anomaly'}
+                    </span>
+                    <span className="recent-pill" style={{ color: s.color, borderColor: s.color }}>
+                      {s.tier}
+                    </span>
+                  </span>
+                  <span className="recent-meta mono">
+                    {a.zone_id} · {fmtDate(a.date)}
+                    {z ? ` · ${z.z_score >= 0 ? '+' : ''}${fmtNum(z.z_score, 2)}σ` : ''}
+                  </span>
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }
@@ -122,6 +191,13 @@ export function DetailPanel({
                 label="Mean depth"
                 value="—"
                 note={stats?.mean_depth_note ?? 'Not produced by this pipeline'}
+              />
+
+              <RecentAlerts
+                alerts={alerts}
+                selectedAlert={selectedAlert}
+                onSelectAlert={onSelectAlert}
+                onViewAll={() => setTab('Alerts')}
               />
             </>
           )

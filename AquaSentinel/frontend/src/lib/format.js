@@ -23,6 +23,16 @@ export const CONFIDENCE_TO_TIER = {
   none: { tier: 'Low', token: 'var(--color-normal)', color: '#2E7D32', rank: 1 },
 }
 
+/**
+ * The statistical flag line, mirrored from backend/pipeline/anomaly.py.
+ *
+ * Z_THRESHOLD there decides "high" confidence; the evidence endpoint uses
+ * `>= 2` for the same test. Both are the same number, and it is repeated here
+ * (rather than imported from a second definition) so the indicator cards colour
+ * themselves with exactly the rule the alerts were raised with.
+ */
+export const Z_THRESHOLD = 2.0
+
 /** Aggregate a set of alerts into the worst confidence present. */
 export function worstConfidence(alerts = []) {
   let worst = 'none'
@@ -35,6 +45,37 @@ export function worstConfidence(alerts = []) {
 
 export function severityOf(confidence) {
   return CONFIDENCE_TO_TIER[confidence] ?? CONFIDENCE_TO_TIER.none
+}
+
+/**
+ * z-score against a seasonal baseline — the identical formula to
+ * anomaly.compute_z_scores: (value - mean) / std.
+ *
+ * Returns null whenever it cannot be computed honestly (no value, no baseline,
+ * zero spread, non-finite) so callers show an em dash rather than a fake 0.0.
+ */
+export function zScore(value, mean, std) {
+  if (value == null || mean == null || std == null) return null
+  if (!Number.isFinite(value) || !Number.isFinite(mean) || !Number.isFinite(std)) return null
+  if (std === 0) return null
+  return (value - mean) / std
+}
+
+/**
+ * Severity for a single observation, expressed in the same three-tier language
+ * the sidebar pills, the zone shading and the alert badges already use:
+ *   |z| >= 2        -> High   (red)    the anomaly.py statistical flag
+ *   |z| >= 1        -> Medium (amber)  watch band
+ *   otherwise       -> Low    (green)
+ *
+ * Returns null when there is no z at all: "not measured" must never render as
+ * a reassuring green.
+ */
+export function severityFromZ(z) {
+  if (z == null || !Number.isFinite(z)) return null
+  const az = Math.abs(z)
+  const confidence = az >= Z_THRESHOLD ? 'high' : az >= Z_THRESHOLD / 2 ? 'needs_review' : 'none'
+  return severityOf(confidence)
 }
 
 /**

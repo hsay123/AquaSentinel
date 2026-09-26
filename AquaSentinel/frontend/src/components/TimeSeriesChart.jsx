@@ -1,13 +1,15 @@
 /**
- * The real time-series chart (design.md §2.2), shared by the bottom-row
- * "Time Series Analysis" panel and the right-hand "Time Series" tab so both
- * render the same thing instead of one showing a chart and the other a list.
+ * The real time-series chart (design.md §2.2), shared by the "Time Series
+ * Analysis" grid panel and the right-hand "Time Series" tab so both render the
+ * same thing instead of one showing a chart and the other a list.
  *
  * All content is real:
  *   - observed line from cached per-zone observations
  *   - seasonal baseline band = mean +/- 2 sigma from data/baselines
  *   - gaps preserved (connectNulls={false}); never interpolated
- *   - flagged anomaly marked, with its real z-score
+ *   - flagged anomaly marked, with its real z-score. The timeseries endpoint
+ *     hard-codes is_flagged=false, so the marker comes from the real alert for
+ *     the plotted zone (passed in as `alert`) — see below.
  */
 
 import {
@@ -16,7 +18,7 @@ import {
 } from 'recharts'
 import { Warning } from '@phosphor-icons/react'
 import { INDEX_META, fmtDate, fmtNum } from '../lib/format.js'
-import { Skeleton, EmptyState, Unavailable, ErrorNote } from './States.jsx'
+import { Skeleton, EmptyState, ErrorNote } from './States.jsx'
 
 export function buildSeries(points, index) {
   return (points ?? []).map((p) => ({
@@ -30,11 +32,52 @@ export function buildSeries(points, index) {
   }))
 }
 
+/**
+ * Hover readout: value plus the z-score against the seasonal baseline when the
+ * backend reported one for that observation, e.g. "0.4213 (z = 2.8)".
+ * Invented z-scores are never shown — the row is omitted when there is none.
+ */
+function ChartTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null
+  const d = payload[0]?.payload
+  if (!d) return null
+  return (
+    <div className="ts-tip">
+      <div className="ts-tip-date mono">{fmtDate(d.date)}</div>
+      <div className="ts-tip-value mono">
+        {d.value == null ? '—' : fmtNum(d.value, 4)}
+        {d.z != null && <span className="ts-tip-z"> (z = {d.z >= 0 ? '+' : ''}{fmtNum(d.z, 1)})</span>}
+      </div>
+      {d.baselineMean != null && (
+        <div className="ts-tip-base mono">baseline {fmtNum(d.baselineMean, 4)}</div>
+      )}
+      {d.isFlagged && <div className="ts-tip-flag">flagged anomaly</div>}
+    </div>
+  )
+}
+
 export function TimeSeriesChart({
-  series, index, loading, error, alert, height = 220, onIndexChange, title,
+  series, index, loading, error, alert, height = 220, onIndexChange, title, fill, zoneLabel,
 }) {
   const meta = INDEX_META[index]
-  const chartData = buildSeries(series, index)
+  const rawData = buildSeries(series, index)
+
+  const flagged = alert
+    ? {
+        date: String(alert.date).slice(0, 10),
+        z: alert.indicators?.find((i) => i.name === index)?.z_score ?? null,
+      }
+    : null
+
+  // The timeseries endpoint hard-codes is_flagged=false (detection is not
+  // persisted per point), so the marker and its z are taken from the real alert
+  // for the plotted zone and attached to the matching date. Nothing is invented:
+  // a date with no alert simply has no marker.
+  const chartData = flagged
+    ? rawData.map((d) => (d.date === flagged.date
+      ? { ...d, isFlagged: true, z: flagged.z ?? d.z }
+      : d))
+    : rawData
   const hasData = chartData.some((d) => d.value != null)
 
   // Band drawn as a stacked area: lower bound, then (upper - lower).
@@ -43,13 +86,6 @@ export function TimeSeriesChart({
     band: d.upper != null && d.lower != null ? d.upper - d.lower : null,
   }))
   const meanRef = chartData.find((d) => d.baselineMean != null)?.baselineMean ?? null
-
-  const flagged = alert
-    ? {
-        date: String(alert.date).slice(0, 10),
-        z: alert.indicators?.find((i) => i.name === index)?.z_score ?? null,
-      }
-    : null
 
   return (
     <>
@@ -84,8 +120,14 @@ export function TimeSeriesChart({
         />
       ) : (
         <>
-          <div className="ts-chart" style={{ minHeight: height }}>
-            <ResponsiveContainer width="100%" height={height}>
+          {(zoneLabel || meta) && (
+            <div className="ts-caption mono">
+              {zoneLabel ? `${zoneLabel} · ` : ''}{meta.label}
+              {meta.unit ? ` · ${meta.unit}` : ''}
+            </div>
+          )}
+          <div className={`ts-chart ${fill ? 'is-fill' : ''}`} style={fill ? undefined : { minHeight: height }}>
+            <ResponsiveContainer width="100%" height={fill ? '100%' : height}>
               <LineChart data={bandData} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#2A3A4A" vertical={false} />
                 <XAxis
@@ -111,15 +153,8 @@ export function TimeSeriesChart({
                   }}
                 />
                 <Tooltip
-                  contentStyle={{
-                    background: '#1A2535',
-                    border: '1px solid rgba(56,200,255,0.3)',
-                    borderRadius: 8,
-                    fontSize: 11,
-                  }}
-                  labelStyle={{ color: '#9AA4B2', fontFamily: 'JetBrains Mono, monospace' }}
-                  formatter={(v) => (v == null ? '—' : fmtNum(v, 4))}
-                  labelFormatter={(d) => fmtDate(d)}
+                  content={<ChartTooltip />}
+                  cursor={{ stroke: 'rgba(56,200,255,0.35)', strokeWidth: 1 }}
                 />
 
                 {/* Baseline +/-2 sigma band.

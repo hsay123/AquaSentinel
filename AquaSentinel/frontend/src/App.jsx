@@ -1,6 +1,11 @@
 /**
  * AquaSentinel dashboard.
  *
+ * LAYOUT — one CSS Grid with six named areas (see styles/app.css):
+ *   sidebar | map + stat strip | detail
+ *   sidebar | indicators | chart | before/after
+ * Nothing is absolutely positioned over the map: every panel is a grid cell.
+ *
  * Data flow, all from real backend endpoints (UI_DATA_MAP.md):
  *   /health                     -> GEE chip (with the specific failure reason)
  *   /waterbodies                -> sidebar list
@@ -9,9 +14,13 @@
  *   /waterbodies/{id}/zones     -> real zone geometry for the map
  *   /waterbodies/{id}/timeseries-> per-zone observations + baseline band
  *   /alerts?waterbody_id=       -> real alerts (computed on demand)
+ *   /alerts/evidence            -> real before/after pair for the open alert
  *
- * Selecting a zone is the single most important interaction: it drives the map
- * highlight, the indicator tiles, the time series and the before/after pair.
+ * STATE — `selectedId` (water body) and `selectedZoneId` are the single source
+ * of truth, and `tsIndex` is the single active indicator shared by the map
+ * overlay, the indicator cards and the chart. Selecting a zone drives the map
+ * highlight, the indicator cards, the time series and the before/after pair
+ * together.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -25,8 +34,11 @@ import { MapPanel } from './components/MapPanel.jsx'
 import { DetailPanel } from './components/DetailPanel.jsx'
 import { IndicatorTiles } from './components/IndicatorTiles.jsx'
 import { TimeSeriesPanel } from './components/TimeSeriesPanel.jsx'
-import { BeforeAfterSlider } from './components/BeforeAfterSlider.jsx'
-import { Skeleton, ErrorNote } from './components/States.jsx'
+import { BeforeAfterPanel } from './components/BeforeAfterPanel.jsx'
+import { ErrorNote } from './components/States.jsx'
+
+/** The three indices the pipeline actually renders (texture_score is None). */
+const RENDERED_INDEXES = ['ndti', 'ndci', 'fai']
 
 export default function App() {
   const [health, setHealth] = useState(null)
@@ -43,10 +55,16 @@ export default function App() {
   const [zonesError, setZonesError] = useState(null)
   const [statsById, setStatsById] = useState({})
   const [alertsById, setAlertsById] = useState({})
-  const [series, setSeries] = useState(null)
+  // One time series per index, for the selected zone. The endpoint returns the
+  // seasonal baseline for the index it was asked about, so each indicator card
+  // needs its own call to report a real z-score instead of "no baseline".
+  const [seriesByIndex, setSeriesByIndex] = useState({})
+  const [seriesErrors, setSeriesErrors] = useState({})
   const [seriesLoading, setSeriesLoading] = useState(false)
-  const [seriesError, setSeriesError] = useState(null)
   const [bootError, setBootError] = useState(null)
+
+  const series = seriesByIndex[tsIndex]?.points ?? null
+  const seriesError = seriesErrors[tsIndex] ?? null
 
   const waterbody = useMemo(
     () => waterbodies.find((w) => w.id === selectedId) ?? null,
@@ -105,6 +123,11 @@ export default function App() {
     if (!selectedId) { setZones([]); setSelectedZoneId(null); return }
     let dead = false
     setZonesLoading(true); setZonesError(null); setZones([])
+    // A zone id is scoped to its water body: zone_227 of the Yamuna grid is a
+    // different polygon from zone_227 of the Hussain Sagar grid. Keeping the
+    // old selection "because the id happens to exist in both" would carry a
+    // stale highlight into a body it was never measured for.
+    setSelectedZoneId(null)
     getZones(selectedId)
       .then((z) => {
         if (dead) return
@@ -132,7 +155,7 @@ export default function App() {
     return () => { dead = true }
   }, [selectedId])
 
-  // ---- selected zone: time series ---------------------------------------
+  // ---- selected zone: time series, for every rendered index --------------
   // Guarded by a request sequence, not a `dead` closure flag. The flag version
   // left `seriesLoading` stuck at true whenever the effect was cleaned up before
   // the response arrived, which hangs the panel on a skeleton forever — and
@@ -141,18 +164,37 @@ export default function App() {
   useEffect(() => {
     if (!selectedId || !selectedZoneId) {
       seriesReqRef.current += 1
-      setSeries(null)
+      setSeriesByIndex({})
+      setSeriesErrors({})
       setSeriesLoading(false)
       return
     }
     const reqId = ++seriesReqRef.current
     setSeriesLoading(true)
-    setSeriesError(null)
-    getTimeseries(selectedId, selectedZoneId, tsIndex)
-      .then((d) => { if (seriesReqRef.current === reqId) setSeries(d?.points ?? null) })
-      .catch((e) => { if (seriesReqRef.current === reqId) setSeriesError(e) })
-      .finally(() => { if (seriesReqRef.current === reqId) setSeriesLoading(false) })
-  }, [selectedId, selectedZoneId, tsIndex])
+    setSeriesByIndex({})
+    setSeriesErrors({})
+    Promise.all(
+      RENDERED_INDEXES.map(async (idx) => {
+        try {
+          const d = await getTimeseries(selectedId, selectedZoneId, idx)
+          return [idx, { points: d?.points ?? null }]
+        } catch (e) {
+          return [idx, { points: null }, e]
+        }
+      }),
+    ).then((results) => {
+      if (seriesReqRef.current !== reqId) return
+      const points = {}
+      const errors = {}
+      for (const [idx, value, err] of results) {
+        points[idx] = value
+        if (err) errors[idx] = err
+      }
+      setSeriesByIndex(points)
+      setSeriesErrors(errors)
+      setSeriesLoading(false)
+    })
+  }, [selectedId, selectedZoneId])
 
   // Keep a selected alert only while it still belongs to the water body.
   useEffect(() => {
@@ -162,7 +204,14 @@ export default function App() {
   }, [alerts, selectedAlert])
 
   const onSelectZone = useCallback((zoneId) => setSelectedZoneId(zoneId), [])
-  const onSelectAlert = useCallback((a) => setSelectedAlert(a), [])
+  // Selecting an alert also moves the active zone to that alert's zone. The
+  // chart and the indicator cards describe ONE zone, so leaving the zone behind
+  // would paint a different zone's numbers next to the alert the user just
+  // opened. Before/after already follows the alert itself.
+  const onSelectAlert = useCallback((a) => {
+    setSelectedAlert(a)
+    if (a?.zone_id) setSelectedZoneId(a.zone_id)
+  }, [])
 
   // The alert belonging to the selected zone, for the time-series callout.
   // A panel must not claim "no real observations" while the zone grid or the
@@ -175,12 +224,26 @@ export default function App() {
     [alerts, selectedZoneId],
   )
   const activeAlert = selectedAlert ?? zoneAlert
-  const latestPoint = useMemo(
-    () => (series ?? []).filter((p) => p).slice(-1)[0] ?? null,
-    [series],
-  )
+
+  // The chart plots the SELECTED zone, so its anomaly callout and marker must
+  // come from an alert about that same zone. Handing it an explicitly selected
+  // alert from a different zone would paint zone A's anomaly on zone B's line.
+  const chartAlert = selectedAlert?.zone_id === selectedZoneId ? selectedAlert : zoneAlert
+
+  // Latest real observation per index. Read from that index's OWN series so a
+  // card's z-score is never built from another index's baseline.
+  const latestByIndex = useMemo(() => {
+    const out = {}
+    for (const idx of RENDERED_INDEXES) {
+      const pts = seriesByIndex[idx]?.points
+      out[idx] = (pts ?? []).filter(Boolean).slice(-1)[0] ?? null
+    }
+    return out
+  }, [seriesByIndex])
 
   return (
+    /* One CSS Grid, six named areas. Nothing is positioned over the map: the
+       map is a cell like every other panel, and the sidebar is a column. */
     <div className="app">
       <Sidebar
         active={nav}
@@ -192,8 +255,10 @@ export default function App() {
         onSelect={(id) => { setSelectedId(id); setSelectedAlert(null) }}
       />
 
-      <main className="main-content">
-        <header className="topbar kpi-strip-row">
+      {/* MAP CARD: the stat strip is the card's own header, so it spans the map
+          column instead of the whole window. */}
+      <section className="panel map-card">
+        <header className="stat-strip">
           <KpiStrip
             summary={summary}
             alerts={selectedId ? alerts : []}
@@ -214,49 +279,55 @@ export default function App() {
           </div>
         )}
 
-        {/* MAIN ROW: dominant map + docked detail column. Neither floats. */}
-        <div className="main-row">
-          <MapPanel
-            waterbody={waterbody}
-            zones={zones}
-            selectedZoneId={selectedZoneId}
-            onSelectZone={onSelectZone}
-            stats={stats}
-            loadingZones={zonesLoading}
-            zonesError={zonesError}
-          />
+        <MapPanel
+          waterbody={waterbody}
+          zones={zones}
+          selectedZoneId={selectedZoneId}
+          onSelectZone={onSelectZone}
+          stats={stats}
+          loadingZones={zonesLoading}
+          zonesError={zonesError}
+          index={tsIndex}
+          onIndexChange={setTsIndex}
+        />
+      </section>
 
-          <DetailPanel
-            waterbody={waterbody}
-            stats={stats}
-            loading={!stats && !!selectedId}
-            alerts={alerts}
-            selectedZoneId={selectedZoneId}
-            onSelectAlert={onSelectAlert}
-            selectedAlert={selectedAlert}
-            series={series}
-            seriesLoading={seriesPending}
-            seriesError={seriesError}
-            index={tsIndex}
-            onIndexChange={setTsIndex}
-            zoneAlert={zoneAlert}
-          />
-        </div>
+      <DetailPanel
+        waterbody={waterbody}
+        stats={stats}
+        loading={!stats && !!selectedId}
+        alerts={alerts}
+        selectedZoneId={selectedZoneId}
+        onSelectAlert={onSelectAlert}
+        selectedAlert={selectedAlert}
+        series={series}
+        seriesLoading={seriesPending}
+        seriesError={seriesError}
+        index={tsIndex}
+        onIndexChange={setTsIndex}
+        zoneAlert={zoneAlert}
+      />
 
-        {/* BOTTOM ROW: three docked analysis panels, full width. */}
-        <div className="bottom-row">
-          <IndicatorTiles latestPoint={latestPoint} loading={seriesPending} />
-          <TimeSeriesPanel
-            series={series}
-            index={tsIndex}
-            loading={seriesPending}
-            error={seriesError}
-            alert={activeAlert}
-            onIndexChange={setTsIndex}
-          />
-          <BeforeAfterSlider alert={activeAlert} />
-        </div>
-      </main>
+      <IndicatorTiles
+        latestByIndex={latestByIndex}
+        errors={seriesErrors}
+        loading={seriesPending}
+        activeIndex={tsIndex}
+        onSelectIndex={setTsIndex}
+        alert={activeAlert}
+      />
+
+      <TimeSeriesPanel
+        series={series}
+        index={tsIndex}
+        loading={seriesPending}
+        error={seriesError}
+        alert={chartAlert}
+        zoneLabel={selectedZoneId}
+        onIndexChange={setTsIndex}
+      />
+
+      <BeforeAfterPanel alert={activeAlert} waterbodyId={selectedId} />
     </div>
   )
 }

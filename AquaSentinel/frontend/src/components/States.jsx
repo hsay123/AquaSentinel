@@ -22,7 +22,7 @@ export function Skeleton({ lines = 3, height = 12, className = '' }) {
 
 export function SkeletonTile() {
   return (
-    <div className="ind-tile skeleton-tile" aria-busy="true">
+    <div className="ind-card skeleton-tile" aria-busy="true">
       <div className="skeleton-line" style={{ height: 10, width: '55%' }} />
       <div className="skeleton-line" style={{ height: 22, width: '70%', marginTop: 8 }} />
       <div className="skeleton-line" style={{ height: 9, width: '40%', marginTop: 8 }} />
