@@ -44549,7 +44549,7 @@
             /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "hero-badge", children: "No synthetic data" })
           ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("header", { className: "topbar float-top", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("header", { className: "topbar", children: [
           /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
             KpiStrip,
             {
@@ -44570,19 +44570,19 @@
             /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "mono", children: "uvicorn backend.main:app --reload --port 8000" })
           ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "map-stage", children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-          MapPanel,
-          {
-            waterbody,
-            zones,
-            selectedZoneId,
-            onSelectZone,
-            stats,
-            loadingZones: zonesLoading,
-            zonesError
-          }
-        ) }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "overlay-layer", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "grid", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+            MapPanel,
+            {
+              waterbody,
+              zones,
+              selectedZoneId,
+              onSelectZone,
+              stats,
+              loadingZones: zonesLoading,
+              zonesError
+            }
+          ),
           /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
             DetailPanel,
             {
@@ -44601,21 +44601,19 @@
               zoneAlert
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "float-bottom", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(IndicatorTiles, { latestPoint, loading: seriesPending }),
-            /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-              TimeSeriesPanel,
-              {
-                series,
-                index: tsIndex,
-                loading: seriesPending,
-                error: seriesError,
-                alert: activeAlert,
-                onIndexChange: setTsIndex
-              }
-            ),
-            /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(BeforeAfterSlider, { alert: activeAlert })
-          ] })
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(IndicatorTiles, { latestPoint, loading: seriesPending }),
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+            TimeSeriesPanel,
+            {
+              series,
+              index: tsIndex,
+              loading: seriesPending,
+              error: seriesError,
+              alert: activeAlert,
+              onIndexChange: setTsIndex
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(BeforeAfterSlider, { alert: activeAlert })
         ] })
       ] })
     ] });

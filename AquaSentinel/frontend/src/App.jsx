@@ -218,7 +218,7 @@ export default function App() {
           </div>
         </div>
 
-        <header className="topbar float-top">
+        <header className="topbar">
           <KpiStrip
             summary={summary}
             alerts={selectedId ? alerts : []}
@@ -239,7 +239,7 @@ export default function App() {
           </div>
         )}
 
-        <div className="map-stage">
+        <div className="grid">
           <MapPanel
             waterbody={waterbody}
             zones={zones}
@@ -249,9 +249,7 @@ export default function App() {
             loadingZones={zonesLoading}
             zonesError={zonesError}
           />
-        </div>
 
-        <div className="overlay-layer">
           <DetailPanel
             waterbody={waterbody}
             stats={stats}
@@ -268,7 +266,6 @@ export default function App() {
             zoneAlert={zoneAlert}
           />
 
-          <div className="float-bottom">
           <IndicatorTiles latestPoint={latestPoint} loading={seriesPending} />
 
           <TimeSeriesPanel
@@ -281,7 +278,6 @@ export default function App() {
           />
 
           <BeforeAfterSlider alert={activeAlert} />
-          </div>
         </div>
       </main>
     </div>
