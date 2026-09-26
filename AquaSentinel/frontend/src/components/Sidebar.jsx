@@ -131,10 +131,9 @@ export function Sidebar({
             <span>Not a lab replacement</span>
           </div>
           <p>
-            Not a lab replacement. AquaSentinel surfaces optically observable
-            satellite anomalies to prioritise sites for ground investigation. It
-            does not measure pH, heavy metals, <em>E. coli</em>, or any other
-            lab-based parameter.
+            AquaSentinel surfaces optically observable satellite anomalies to
+            prioritise sites for ground investigation. It does not measure pH,
+            heavy metals, <em>E. coli</em>, or any other lab-based parameter.
           </p>
         </div>
       </div>
