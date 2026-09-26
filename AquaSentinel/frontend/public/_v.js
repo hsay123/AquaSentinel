@@ -21760,70 +21760,12 @@
 
   // src/main.jsx
   init_define_import_meta_env();
-  var import_react58 = __toESM(require_react(), 1);
+  var import_react59 = __toESM(require_react(), 1);
   var import_client3 = __toESM(require_client(), 1);
 
   // src/App.jsx
   init_define_import_meta_env();
   var import_react57 = __toESM(require_react(), 1);
-
-  // src/api/client.js
-  init_define_import_meta_env();
-  var API_BASE = define_import_meta_env_default.VITE_API_BASE ?? "/api";
-  async function request(path2, { signal, timeoutMs = 6e4 } = {}) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-    if (signal) signal.addEventListener("abort", () => ctrl.abort(), { once: true });
-    try {
-      const res = await fetch(`${API_BASE}${path2}`, { signal: ctrl.signal });
-      if (res.status === 404) return null;
-      if (res.status === 204) return null;
-      const text = await res.text();
-      let body = null;
-      if (text) {
-        try {
-          body = JSON.parse(text);
-        } catch {
-          body = { detail: text };
-        }
-      }
-      if (!res.ok) {
-        const detail = body?.detail;
-        const message = typeof detail === "string" ? detail : detail?.error || detail?.message || `HTTP ${res.status}`;
-        const err = new Error(message);
-        err.status = res.status;
-        err.detail = detail;
-        throw err;
-      }
-      return body;
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-  var getHealth = (opts) => request("/health", opts);
-  var getSummary = (opts) => request("/waterbodies/-/summary", opts);
-  var getWaterbodies = (opts) => request("/waterbodies", opts);
-  var getZones = (waterbodyId, opts) => request(`/waterbodies/${encodeURIComponent(waterbodyId)}/zones`, opts);
-  var getWaterbodyStats = (waterbodyId, opts) => request(`/waterbodies/${encodeURIComponent(waterbodyId)}/stats`, opts);
-  var getTimeseries = (waterbodyId, zoneId, index, opts) => request(
-    `/waterbodies/${encodeURIComponent(waterbodyId)}/timeseries?zone_id=${encodeURIComponent(zoneId)}&index=${encodeURIComponent(index)}`,
-    opts
-  );
-  var getAlerts = (waterbodyId, opts) => request(`/alerts?waterbody_id=${encodeURIComponent(waterbodyId)}`, {
-    timeoutMs: 18e4,
-    ...opts
-  });
-  var getIndexOverlay = (waterbodyId, index, date2, opts) => request(
-    `/renders/overlay?waterbody_id=${encodeURIComponent(waterbodyId)}&index=${encodeURIComponent(index)}&date=${encodeURIComponent(date2)}`,
-    { timeoutMs: 18e4, ...opts }
-  );
-  var getTrueColorRaster = (waterbodyId, date2, opts) => request(
-    `/renders/true-color-raster?waterbody_id=${encodeURIComponent(waterbodyId)}&date=${encodeURIComponent(date2)}`,
-    { timeoutMs: 18e4, ...opts }
-  );
-
-  // src/components/Sidebar.jsx
-  init_define_import_meta_env();
 
   // node_modules/@phosphor-icons/react/dist/index.es.js
   init_define_import_meta_env();
@@ -22675,6 +22617,64 @@
   var r8 = o16.forwardRef((n7, a24) => /* @__PURE__ */ o16.createElement(p, { ref: a24, ...n7, weights: e19 }));
   r8.displayName = "WarningIcon";
   var c5 = r8;
+
+  // src/api/client.js
+  init_define_import_meta_env();
+  var API_BASE = define_import_meta_env_default.VITE_API_BASE ?? "/api";
+  async function request(path2, { signal, timeoutMs = 6e4 } = {}) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    if (signal) signal.addEventListener("abort", () => ctrl.abort(), { once: true });
+    try {
+      const res = await fetch(`${API_BASE}${path2}`, { signal: ctrl.signal });
+      if (res.status === 404) return null;
+      if (res.status === 204) return null;
+      const text = await res.text();
+      let body = null;
+      if (text) {
+        try {
+          body = JSON.parse(text);
+        } catch {
+          body = { detail: text };
+        }
+      }
+      if (!res.ok) {
+        const detail = body?.detail;
+        const message = typeof detail === "string" ? detail : detail?.error || detail?.message || `HTTP ${res.status}`;
+        const err = new Error(message);
+        err.status = res.status;
+        err.detail = detail;
+        throw err;
+      }
+      return body;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  var getHealth = (opts) => request("/health", opts);
+  var getSummary = (opts) => request("/waterbodies/-/summary", opts);
+  var getWaterbodies = (opts) => request("/waterbodies", opts);
+  var getZones = (waterbodyId, opts) => request(`/waterbodies/${encodeURIComponent(waterbodyId)}/zones`, opts);
+  var getWaterbodyStats = (waterbodyId, opts) => request(`/waterbodies/${encodeURIComponent(waterbodyId)}/stats`, opts);
+  var getTimeseries = (waterbodyId, zoneId, index, opts) => request(
+    `/waterbodies/${encodeURIComponent(waterbodyId)}/timeseries?zone_id=${encodeURIComponent(zoneId)}&index=${encodeURIComponent(index)}`,
+    opts
+  );
+  var getAlerts = (waterbodyId, opts) => request(`/alerts?waterbody_id=${encodeURIComponent(waterbodyId)}`, {
+    timeoutMs: 18e4,
+    ...opts
+  });
+  var getIndexOverlay = (waterbodyId, index, date2, opts) => request(
+    `/renders/overlay?waterbody_id=${encodeURIComponent(waterbodyId)}&index=${encodeURIComponent(index)}&date=${encodeURIComponent(date2)}`,
+    { timeoutMs: 18e4, ...opts }
+  );
+  var getTrueColorRaster = (waterbodyId, date2, opts) => request(
+    `/renders/true-color-raster?waterbody_id=${encodeURIComponent(waterbodyId)}&date=${encodeURIComponent(date2)}`,
+    { timeoutMs: 18e4, ...opts }
+  );
+
+  // src/components/Sidebar.jsx
+  init_define_import_meta_env();
 
   // src/lib/format.js
   init_define_import_meta_env();
@@ -23653,8 +23653,34 @@
     const heatCorners = toCorners(heat.data?.bounds);
     const heatReady = showHeatmap && heat.state === "ready" && heatCorners;
     const legendData = heat.state === "ready" ? heat.data : null;
-    return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { className: "map-container", children: [
-      false,
+    return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { className: "panel map-panel", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "panel-head", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "panel-title", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: waterbody ? waterbody.name : "Select a water body" }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "map-controls", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "seg", children: ["ndti", "ndci", "fai"].map((k2) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+            "button",
+            {
+              type: "button",
+              className: index === k2 ? "is-active" : "",
+              onClick: () => setIndex(k2),
+              title: INDEX_META[k2].label,
+              children: INDEX_META[k2].short
+            },
+            k2
+          )) }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "map-toggle", title: "Show or hide the index overlay", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+              "input",
+              {
+                type: "checkbox",
+                checked: showHeatmap,
+                onChange: (e31) => setShowHeatmap(e31.target.checked)
+              }
+            ),
+            "Overlay"
+          ] })
+        ] })
+      ] }),
       /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "map-canvas", children: [
         !bounds ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "map-loading", children: waterbody ? "Loading water-body bounds\u2026" : "Select a water body" }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
           MapContainer,
@@ -23683,30 +23709,6 @@
             ]
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "map-top-controls", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "seg", children: ["ndti", "ndci", "fai"].map((k2) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-            "button",
-            {
-              type: "button",
-              className: index === k2 ? "is-active" : "",
-              onClick: () => setIndex(k2),
-              title: INDEX_META[k2].label,
-              children: INDEX_META[k2].short
-            },
-            k2
-          )) }),
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "map-toggle", title: "Show or hide the index overlay", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-              "input",
-              {
-                type: "checkbox",
-                checked: showHeatmap,
-                onChange: (e31) => setShowHeatmap(e31.target.checked)
-              }
-            ),
-            "Overlay"
-          ] })
-        ] }),
         /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "date-nav", children: [
           /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
             "button",
@@ -23730,7 +23732,7 @@
             }
           )
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "map-legend-box map-legend", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "map-legend-box", children: [
           /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "legend-title", children: legendData ? legendData.title ?? INDEX_META[index].label : INDEX_META[index].label }),
           heat.state === "loading" && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(Skeleton, { lines: 1, height: 10 }),
           legendData && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
@@ -44080,12 +44082,12 @@
   }) {
     const [tab, setTab] = (0, import_react52.useState)("Overview");
     if (!waterbody) {
-      return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("section", { className: "panel detail-panel", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "detail-empty", children: "Select a water body." }) });
+      return /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("section", { className: "panel detail-panel float-right-card", children: /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("div", { className: "detail-empty", children: "Select a water body." }) });
     }
     const hasScenes = Number(stats?.scene_count ?? 0) > 0;
     const conf = worstConfidence(alerts);
     const sev = hasScenes ? severityOf(conf) : { tier: "No data", color: "var(--text-muted)" };
-    return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("section", { className: "panel detail-panel", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("section", { className: "panel detail-panel float-right-card", children: [
       /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "detail-head", children: [
         /* @__PURE__ */ (0, import_jsx_runtime6.jsxs)("div", { className: "detail-title-row", children: [
           /* @__PURE__ */ (0, import_jsx_runtime6.jsx)("h2", { className: "detail-name", children: waterbody.name }),
@@ -44528,8 +44530,26 @@
           }
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("main", { className: "main-content", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("header", { className: "topbar kpi-strip-row", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("main", { className: "main", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "hero", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("h1", { className: "hero-tagline", children: [
+            "Monitor. Detect. ",
+            /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { children: "Explain." })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("p", { className: "hero-sub", children: "Satellite-based water quality and contamination early warning. Every index on this dashboard is computed from real Sentinel-2 L2A surface reflectance retrieved from Google Earth Engine." }),
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "hero-badges", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("span", { className: "hero-badge is-real", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(n2, { size: 11, weight: "duotone" }),
+              " Powered by Sentinel-2"
+            ] }),
+            summary?.as_of && /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("span", { className: "hero-badge", children: [
+              "As of ",
+              (/* @__PURE__ */ new Date(`${summary.as_of}T00:00:00Z`)).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "hero-badge", children: "No synthetic data" })
+          ] })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("header", { className: "topbar float-top", children: [
           /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
             KpiStrip,
             {
@@ -44550,19 +44570,19 @@
             /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("span", { className: "mono", children: "uvicorn backend.main:app --reload --port 8000" })
           ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "main-row", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-            MapPanel,
-            {
-              waterbody,
-              zones,
-              selectedZoneId,
-              onSelectZone,
-              stats,
-              loadingZones: zonesLoading,
-              zonesError
-            }
-          ),
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsx)("div", { className: "map-stage", children: /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+          MapPanel,
+          {
+            waterbody,
+            zones,
+            selectedZoneId,
+            onSelectZone,
+            stats,
+            loadingZones: zonesLoading,
+            zonesError
+          }
+        ) }),
+        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "overlay-layer", children: [
           /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
             DetailPanel,
             {
@@ -44580,22 +44600,22 @@
               onIndexChange: setTsIndex,
               zoneAlert
             }
-          )
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "bottom-row", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(IndicatorTiles, { latestPoint, loading: seriesPending }),
-          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
-            TimeSeriesPanel,
-            {
-              series,
-              index: tsIndex,
-              loading: seriesPending,
-              error: seriesError,
-              alert: activeAlert,
-              onIndexChange: setTsIndex
-            }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(BeforeAfterSlider, { alert: activeAlert })
+          /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)("div", { className: "float-bottom", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(IndicatorTiles, { latestPoint, loading: seriesPending }),
+            /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(
+              TimeSeriesPanel,
+              {
+                series,
+                index: tsIndex,
+                loading: seriesPending,
+                error: seriesError,
+                alert: activeAlert,
+                onIndexChange: setTsIndex
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime10.jsx)(BeforeAfterSlider, { alert: activeAlert })
+          ] })
         ] })
       ] })
     ] });
@@ -44607,7 +44627,7 @@
   // src/main.jsx
   var import_jsx_runtime11 = __toESM(require_jsx_runtime(), 1);
   import_client3.default.createRoot(document.getElementById("root")).render(
-    /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(import_react58.default.StrictMode, { children: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(App, {}) })
+    /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(import_react59.default.StrictMode, { children: /* @__PURE__ */ (0, import_jsx_runtime11.jsx)(App, {}) })
   );
 })();
 /*! Bundled license information:

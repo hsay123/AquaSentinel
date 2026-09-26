@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Broadcast } from '@phosphor-icons/react'
 import {
   getHealth, getSummary, getWaterbodies, getZones, getWaterbodyStats,
   getTimeseries, getAlerts,
@@ -192,8 +193,32 @@ export default function App() {
         onSelect={(id) => { setSelectedId(id); setSelectedAlert(null) }}
       />
 
-      <main className="main-content">
-        <header className="topbar kpi-strip-row">
+      <main className="main">
+        {/* Hero / branding wrapper. Purely presentational — every number in the
+            KPI strip below it comes from the backend. */}
+        <div className="hero">
+          <h1 className="hero-tagline">
+            Monitor. Detect. <span>Explain.</span>
+          </h1>
+          <p className="hero-sub">
+            Satellite-based water quality and contamination early warning. Every
+            index on this dashboard is computed from real Sentinel-2 L2A surface
+            reflectance retrieved from Google Earth Engine.
+          </p>
+          <div className="hero-badges">
+            <span className="hero-badge is-real">
+              <Broadcast size={11} weight="duotone" /> Powered by Sentinel-2
+            </span>
+            {summary?.as_of && (
+              <span className="hero-badge">
+                As of {new Date(`${summary.as_of}T00:00:00Z`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}
+              </span>
+            )}
+            <span className="hero-badge">No synthetic data</span>
+          </div>
+        </div>
+
+        <header className="topbar float-top">
           <KpiStrip
             summary={summary}
             alerts={selectedId ? alerts : []}
@@ -214,8 +239,7 @@ export default function App() {
           </div>
         )}
 
-        {/* MAIN ROW: dominant map + docked detail column. Neither floats. */}
-        <div className="main-row">
+        <div className="map-stage">
           <MapPanel
             waterbody={waterbody}
             zones={zones}
@@ -225,7 +249,9 @@ export default function App() {
             loadingZones={zonesLoading}
             zonesError={zonesError}
           />
+        </div>
 
+        <div className="overlay-layer">
           <DetailPanel
             waterbody={waterbody}
             stats={stats}
@@ -241,11 +267,10 @@ export default function App() {
             onIndexChange={setTsIndex}
             zoneAlert={zoneAlert}
           />
-        </div>
 
-        {/* BOTTOM ROW: three docked analysis panels, full width. */}
-        <div className="bottom-row">
+          <div className="float-bottom">
           <IndicatorTiles latestPoint={latestPoint} loading={seriesPending} />
+
           <TimeSeriesPanel
             series={series}
             index={tsIndex}
@@ -254,7 +279,9 @@ export default function App() {
             alert={activeAlert}
             onIndexChange={setTsIndex}
           />
+
           <BeforeAfterSlider alert={activeAlert} />
+          </div>
         </div>
       </main>
     </div>
