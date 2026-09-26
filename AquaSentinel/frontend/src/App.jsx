@@ -26,8 +26,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   getHealth, getSummary, getWaterbodies, getZones, getWaterbodyStats,
-  getTimeseries, getAlerts,
+  getTimeseries, getAlerts, getTrueColorRaster,
 } from './api/client.js'
+import { buildZoneLabels, zoneName } from './lib/zones.js'
 import { Sidebar } from './components/Sidebar.jsx'
 import { KpiStrip, GeeStatus } from './components/KpiStrip.jsx'
 import { MapPanel } from './components/MapPanel.jsx'
@@ -63,8 +64,12 @@ export default function App() {
   const [seriesLoading, setSeriesLoading] = useState(false)
   const [bootError, setBootError] = useState(null)
 
-  const series = seriesByIndex[tsIndex]?.points ?? null
-  const seriesError = seriesErrors[tsIndex] ?? null
+  // The active scene is dashboard state, not map state: the map draws it, the
+  // sidebar's promo thumbnail shows it, and the detail card's cover shows it.
+  // One fetch, one truth — otherwise the promo advertises a different
+  // acquisition than the map is drawing.
+  const [sceneDate, setSceneDate] = useState(null)
+  const [base, setBase] = useState({ state: 'idle', data: null, error: null })
 
   const waterbody = useMemo(
     () => waterbodies.find((w) => w.id === selectedId) ?? null,
@@ -72,6 +77,26 @@ export default function App() {
   )
   const stats = selectedId ? statsById[selectedId] : null
   const alerts = selectedId ? (alertsById[selectedId] ?? []) : []
+  const sceneDates = stats?.scene_dates ?? []
+
+  useEffect(() => {
+    // Default to the latest real acquisition whenever the body or its cache
+    // changes; never to a date the new body has never been imaged on.
+    setSceneDate(sceneDates.length ? sceneDates[sceneDates.length - 1] : null)
+  }, [selectedId, sceneDates.length])
+
+  useEffect(() => {
+    if (!waterbody || !sceneDate) { setBase({ state: 'idle', data: null, error: null }); return }
+    let dead = false
+    setBase({ state: 'loading', data: null, error: null })
+    getTrueColorRaster(waterbody.id, sceneDate)
+      .then((d) => { if (!dead) setBase(d ? { state: 'ready', data: d, error: null } : { state: 'unavailable', data: null, error: null }) })
+      .catch((e) => { if (!dead) setBase({ state: 'unavailable', data: null, error: e }) })
+    return () => { dead = true }
+  }, [waterbody?.id, sceneDate])
+
+  const series = seriesByIndex[tsIndex]?.points ?? null
+  const seriesError = seriesErrors[tsIndex] ?? null
 
   // ---- boot: health, water bodies, summary -------------------------------
   useEffect(() => {
@@ -241,18 +266,31 @@ export default function App() {
     return out
   }, [seriesByIndex])
 
+  // "Zone A3" aliases for the whole grid, derived from the real zone geometry.
+  const zoneLabels = useMemo(() => buildZoneLabels(zones), [zones])
+
+  const pointsByIndex = useMemo(() => {
+    const out = {}
+    for (const idx of RENDERED_INDEXES) out[idx] = seriesByIndex[idx]?.points ?? null
+    return out
+  }, [seriesByIndex])
+
+  const totalAlerts = useMemo(
+    () => Object.values(alertsById).reduce((n, l) => n + (Array.isArray(l) ? l.length : 0), 0),
+    [alertsById],
+  )
+
   return (
-    /* One CSS Grid, six named areas. Nothing is positioned over the map: the
-       map is a cell like every other panel, and the sidebar is a column. */
+    /* One CSS Grid, six named areas. Nothing is positioned over the map from
+       outside its card: the map is a cell like every other panel, and the
+       sidebar is a column. */
     <div className="app">
       <Sidebar
         active={nav}
         onNavigate={setNav}
-        waterbodies={waterbodies}
-        statsById={statsById}
-        alertsById={alertsById}
-        selectedId={selectedId}
-        onSelect={(id) => { setSelectedId(id); setSelectedAlert(null) }}
+        alertCount={totalAlerts}
+        thumbUrl={base.state === 'ready' ? base.data.image_url : null}
+        thumbAlt={waterbody ? `Sentinel-2 true colour, ${waterbody.name}` : 'Sentinel-2'}
       />
 
       {/* MAP CARD: the stat strip is the card's own header, so it spans the map
@@ -281,14 +319,19 @@ export default function App() {
 
         <MapPanel
           waterbody={waterbody}
+          waterbodies={waterbodies}
+          onSelectWaterbody={(id) => { setSelectedId(id); setSelectedAlert(null) }}
           zones={zones}
+          zoneLabels={zoneLabels}
           selectedZoneId={selectedZoneId}
           onSelectZone={onSelectZone}
-          stats={stats}
+          sceneDates={sceneDates}
+          sceneDate={sceneDate}
+          onSceneChange={setSceneDate}
+          base={base}
           loadingZones={zonesLoading}
           zonesError={zonesError}
           index={tsIndex}
-          onIndexChange={setTsIndex}
         />
       </section>
 
@@ -298,6 +341,8 @@ export default function App() {
         loading={!stats && !!selectedId}
         alerts={alerts}
         selectedZoneId={selectedZoneId}
+        zoneName={zoneName(selectedZoneId, zoneLabels)}
+        coverUrl={base.state === 'ready' ? base.data.image_url : null}
         onSelectAlert={onSelectAlert}
         selectedAlert={selectedAlert}
         series={series}
@@ -310,11 +355,15 @@ export default function App() {
 
       <IndicatorTiles
         latestByIndex={latestByIndex}
+        pointsByIndex={pointsByIndex}
         errors={seriesErrors}
         loading={seriesPending}
         activeIndex={tsIndex}
         onSelectIndex={setTsIndex}
         alert={activeAlert}
+        zoneId={selectedZoneId}
+        zoneLabels={zoneLabels}
+        onZoneChange={onSelectZone}
       />
 
       <TimeSeriesPanel
@@ -323,7 +372,7 @@ export default function App() {
         loading={seriesPending}
         error={seriesError}
         alert={chartAlert}
-        zoneLabel={selectedZoneId}
+        zoneLabel={zoneName(selectedZoneId, zoneLabels)}
         onIndexChange={setTsIndex}
       />
 

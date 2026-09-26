@@ -5,7 +5,7 @@
 - [ ] Backend running on `http://localhost:8000` (`uvicorn main:app --reload`)
 - [ ] Frontend running on `http://localhost:5173` (`npm run dev`)
 - [ ] Precompute script has been run (`python -m backend.scripts.precompute`)
-- [ ] Both demo water bodies show in sidebar with status chips
+- [ ] Both demo water bodies are findable in the map's search box
 - [ ] GEE health shows "Connected" (or "Degraded" if using cache only)
 
 ---
@@ -18,16 +18,18 @@
 > "This is AquaSentinel — a satellite-based water quality early-warning system. It monitors real water bodies using Sentinel-2 imagery from Google Earth Engine. The dashboard shows our two demo water bodies."
 
 **Point out**:
-- Left sidebar: Two water bodies with status chips (Normal/Watch/Alert)
-- Center: Leaflet map with CARTO Positron basemap
-- Right: Location chip showing selected water body name
-- **Bottom**: Persistent boundary banner (non-dismissable) — product boundary statement
+- Left sidebar: navigation only, with a live alert-count badge, the Sentinel-2
+  data card, and the permanent "not a lab replacement" boundary statement
+- Center: the map card — real Sentinel-2 true colour with the index heatmap
+  overlaid, its colour key docked beneath the map rather than floating over the imagery
+- Right: water-body detail card — name, location, status pill, stat rows
+- Below: the four indicator cards, the time series, and the before/after pair
 
 ---
 
 ## Minute 0:30 — Select Yamuna River (Foam Event)
 
-**Action**: Click "Yamuna River, Delhi (Kalindi Kunj)" in sidebar
+**Action**: Type "yamuna" in the map's search box and pick the result
 
 **Narrate**:
 > "The Yamuna River at Kalindi Kunj has documented toxic foam events — September 10, 2023 and October 19, 2024, reported by CNN and The Hindu. Foam is a surface anomaly, so we expect our texture indicator to catch it."

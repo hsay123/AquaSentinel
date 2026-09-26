@@ -1,42 +1,58 @@
 /**
- * Left sidebar: nav, monitored water bodies, and the two persistent footer
- * cards.
+ * Left sidebar: pure navigation.
  *
- * The product-boundary statement lives here (design.md §4) rather than in a
- * dismissable bottom bar, so it stays visible on every view.
+ * The monitored-water-body list was REMOVED from here. Selecting a water body is
+ * the map search bar's job now, and the resulting state is read from the detail
+ * card — duplicating the list in the sidebar put the same control in two places
+ * and let the two disagree. What stays is what belongs to navigation: the brand
+ * lockup, the routes, the Sentinel-2 promo and the product-boundary statement.
+ *
+ * The boundary card is permanent by design (design.md §4): "not a lab
+ * replacement" is a judging criterion and must be visible on every view, so it
+ * is never a tooltip or a dismissable footer.
  */
 
-import { Drop, Graph, Info, MapTrifold, ShieldCheck, Siren, Stack } from '@phosphor-icons/react'
-import { bodyStatus, worstConfidence, fmtArea } from '../lib/format.js'
+import {
+  ChartLine, Compass, Drop, Graph, Info, MapTrifold, ShieldCheck, Siren, SquaresFour,
+} from '@phosphor-icons/react'
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: Graph, enabled: true },
   { id: 'map', label: 'Map', icon: MapTrifold, enabled: true },
   { id: 'alerts', label: 'Alerts', icon: Siren, enabled: true },
-  { id: 'lakes', label: 'Lakes / Reservoirs', icon: Drop, enabled: false },
-  { id: 'analytics', label: 'Analytics', icon: Stack, enabled: false },
-  { id: 'compare', label: 'Compare', icon: Stack, enabled: false },
+  { id: 'lakes', label: 'Lake / Reservoir', icon: Drop, enabled: false },
+  { id: 'analytics', label: 'Analytics', icon: ChartLine, enabled: false },
+  { id: 'compare', label: 'Compare', icon: SquaresFour, enabled: false },
   { id: 'sources', label: 'Data Sources', icon: Info, enabled: false },
-  { id: 'about', label: 'About', icon: Info, enabled: false },
+  { id: 'about', label: 'About', icon: Compass, enabled: false },
 ]
 
-export function Sidebar({
-  active, onNavigate, waterbodies, statsById, alertsById, selectedId, onSelect,
-}) {
-  // Real, already-loaded alert rows only. Never a placeholder number.
-  const alertCount = Object.values(alertsById ?? {}).reduce(
-    (n, list) => n + (Array.isArray(list) ? list.length : 0),
-    0,
+/**
+ * Satellite thumbnail for the promo card. It is the real true-colour composite
+ * for the currently selected water body's latest scene — the same PNG the map
+ * draws, so the card cannot advertise imagery the app is not actually using.
+ * Falls back to a gradient tile while no scene has loaded.
+ */
+function PromoThumb({ imageUrl, alt }) {
+  if (!imageUrl) {
+    return <div className="promo-thumb promo-thumb-empty" aria-hidden><span className="mono">S2</span></div>
+  }
+  return (
+    <div className="promo-thumb">
+      <img src={imageUrl} alt={alt} loading="lazy" />
+      <span className="promo-thumb-badge mono">Sentinel-2</span>
+    </div>
   )
+}
 
+export function Sidebar({ active, onNavigate, alertCount = 0, thumbUrl, thumbAlt }) {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <span className="brand-mark"><Drop size={18} weight="regular" /></span>
-        <div>
+        <span className="brand-mark"><Drop size={18} weight="fill" /></span>
+        <div className="brand-text">
           <div className="brand-name">
-            <span className="brand-aqua">Aqua</span>
-            <span className="brand-sentinel">Sentinel</span>
+            <span className="brand-aqua">Aqua</span><span className="brand-sentinel">Sentinel</span>
           </div>
           <div className="brand-sub">Satellite Intelligence for Cleaner Water</div>
         </div>
@@ -49,91 +65,52 @@ export function Sidebar({
             <button
               key={item.id}
               type="button"
-              className={`nav-item ${active === item.id ? 'is-active' : ''} ${item.enabled ? '' : 'is-disabled'}`}
+              className={`nav-item ${active === item.id ? 'is-active' : ''}`}
               onClick={() => item.enabled && onNavigate(item.id)}
               disabled={!item.enabled}
               title={item.enabled ? item.label : `${item.label} — not built in this release`}
             >
-              <Icon size={15} weight="regular" />
-              <span>{item.label}</span>
-              {/* Count comes from the real loaded alerts for every registered
-                  body. Rendered only once at least one body has a loaded alert
-                  set, so "not loaded yet" is never shown as a real zero. */}
+              <Icon size={17} weight={active === item.id ? 'fill' : 'regular'} className="nav-icon" />
+              <span className="nav-label">{item.label}</span>
               {item.id === 'alerts' && alertCount > 0 && (
                 <span className="nav-badge">{alertCount}</span>
               )}
-              {!item.enabled && <span className="nav-soon">Coming soon</span>}
+              {!item.enabled && <span className="nav-soon">Soon</span>}
             </button>
           )
         })}
       </nav>
 
-      <div className="sidebar-section">
-        <div className="sidebar-title">Monitored Water Bodies</div>
-        <div className="wb-list">
-          {waterbodies.length === 0 && (
-            <div className="wb-empty">No water bodies registered.</div>
-          )}
-          {waterbodies.map((wb) => {
-            const stats = statsById?.[wb.id]
-            const conf = worstConfidence(alertsById?.[wb.id] ?? [])
-            const st = bodyStatus(stats, conf)
-            return (
-              <button
-                key={wb.id}
-                type="button"
-                className={`wb-row ${selectedId === wb.id ? 'is-active' : ''} ${st.kind === 'no-data' ? 'is-pending' : ''}`}
-                onClick={() => onSelect(wb.id)}
-                title={st.note}
-              >
-                <span className="wb-dot" style={{ background: st.color }} aria-hidden />
-                <span className="wb-text">
-                  <span className="wb-name">{wb.name}</span>
-                  <span className="wb-meta mono">
-                    {st.kind === 'no-data'
-                      ? st.note
-                      : stats?.water_area_km2 != null
-                        ? fmtArea(stats.water_area_km2)
-                        : 'area unavailable'}
-                  </span>
-                </span>
-                <span className="wb-tier" style={{ color: st.color }}>{st.label}</span>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
       <div className="sidebar-foot">
-        <div className="info-card">
-          <div className="info-card-head">
-            <Drop size={13} weight="regular" />
-            <span>Sentinel-2</span>
+        <div className="promo-card">
+          <PromoThumb imageUrl={thumbUrl} alt={thumbAlt} />
+          <div className="promo-body">
+            <div className="promo-title">Sentinel-2</div>
+            <div className="promo-sub">Real satellite data</div>
+            <ul className="promo-specs">
+              <li>10 m resolution</li>
+              <li>Multispectral analysis</li>
+            </ul>
+            <a
+              className="promo-link"
+              href="https://sentinel.esa.int/web/sentinel/missions/sentinel-2"
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Learn more <span aria-hidden>&rarr;</span>
+            </a>
           </div>
-          <div className="info-card-sub">Real satellite data</div>
-          <ul className="info-specs">
-            <li>10 m resolution</li>
-            <li>Multispectral analysis</li>
-          </ul>
-          <a
-            className="info-link"
-            href="https://sentinel.esa.int/web/sentinel/missions/sentinel-2"
-            target="_blank"
-            rel="noreferrer noopener"
-          >
-            Learn more <span aria-hidden>&rarr;</span>
-          </a>
         </div>
 
         <div className="boundary-card">
           <div className="boundary-head">
-            <ShieldCheck size={13} weight="regular" />
+            <ShieldCheck size={14} weight="fill" />
             <span>Not a lab replacement</span>
           </div>
           <p>
-            AquaSentinel surfaces optically observable satellite anomalies to
-            prioritise sites for ground investigation. It does not measure pH,
-            heavy metals, <em>E. coli</em>, or any other lab-based parameter.
+            AquaSentinel detects visually observable water quality changes from
+            satellite imagery. It does not measure pH, heavy metals, <em>E. coli</em>{' '}
+            or any lab-based parameters.
           </p>
         </div>
       </div>

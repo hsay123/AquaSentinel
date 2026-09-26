@@ -6,7 +6,25 @@
     <title>AquaSentinel — Water Quality Early Warning</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!--
+      Inter is the UI face; JetBrains Mono carries every number. The stylesheet
+      is loaded NON-BLOCKING on purpose: a render-blocking <link> to a font CDN
+      means one slow response to fonts.googleapis.com leaves the whole dashboard
+      blank instead of merely showing a fallback face. media="print" + onload is
+      the standard swap, and the noscript fallback keeps the font if JS is off.
+    -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      media="print"
+      onload="this.media='all'"
+    >
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      >
+    </noscript>
   </head>
   <body>
     <div id="root"></div>

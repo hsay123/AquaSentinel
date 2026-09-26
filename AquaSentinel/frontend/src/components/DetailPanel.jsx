@@ -13,13 +13,15 @@
  * unavailable rather than showing stock imagery.
  */
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
-  MapPin, Ruler, CalendarBlank, GridFour, Camera, Siren, Warning, ArrowRight,
+  MapPin, Ruler, CalendarBlank, GridFour, Camera, Siren, Warning, ArrowRight, CaretRight,
 } from '@phosphor-icons/react'
 import {
   fmtArea, fmtDate, fmtNum, severityOf, worstConfidence,
 } from '../lib/format.js'
+import { getEvidence } from '../lib/evidence.js'
+import { zoneName } from '../lib/zones.js'
 import { Skeleton, Unavailable, EmptyState } from './States.jsx'
 import { TimeSeriesChart } from './TimeSeriesChart.jsx'
 
@@ -40,11 +42,52 @@ function StatRow({ icon: Icon, label, value, note }) {
 
 /**
  * The three most recent alerts for this water body, in the Overview tab.
- * Same records the sidebar pills and the Alerts tab draw from — the feed is
- * already sorted newest-first — so a row here can be clicked to select the
- * alert, which drives the chart, the indicator cards and the before/after pair.
+ * Same records the Alerts tab draws from — the feed is already sorted
+ * newest-first — so a row can be clicked to select the alert, which drives the
+ * chart, the indicator cards and the before/after pair together.
+ *
+ * Each row carries a 40x40 satellite thumbnail: the REAL true-colour composite
+ * the renderer produced for that alert. Only the top row is fetched eagerly, and
+ * only one at a time — each miss is a ~35s Earth Engine render, so queueing all
+ * three on page load would make the card feel broken for a minute. The rest fill
+ * in when the user selects them, via the shared evidence cache that the
+ * Before/After panel also uses, so no pair is ever rendered twice. Until then a
+ * row shows its severity icon: an honest gap, never a placeholder picture.
  */
-function RecentAlerts({ alerts, selectedAlert, onSelectAlert, onViewAll }) {
+function RecentAlerts({ alerts, selectedAlert, onSelectAlert, onViewAll, waterbodyId }) {
+  const [thumbs, setThumbs] = useState({})
+  const top = alerts?.[0]
+  const wanted = useMemo(
+    () => (top && !thumbs[top.id] ? top : null),
+    [top, thumbs],
+  )
+
+  useEffect(() => {
+    if (!wanted || !waterbodyId) return undefined
+    let dead = false
+    getEvidence(waterbodyId, wanted.zone_id, wanted.date)
+      .then((d) => {
+        if (dead) return
+        setThumbs((prev) => (
+          prev[wanted.id] ? prev : { ...prev, [wanted.id]: d?.after_image_url ?? null }
+        ))
+      })
+    return () => { dead = true }
+  }, [wanted, waterbodyId])
+
+  // The selected alert's own pair is usually already cached by Before/After.
+  useEffect(() => {
+    const a = selectedAlert
+    if (!a || !waterbodyId || thumbs[a.id]) return undefined
+    let dead = false
+    getEvidence(waterbodyId, a.zone_id, a.date)
+      .then((d) => {
+        if (dead) return
+        setThumbs((prev) => (prev[a.id] ? prev : { ...prev, [a.id]: d?.after_image_url ?? null }))
+      })
+    return () => { dead = true }
+  }, [selectedAlert, waterbodyId, thumbs])
+
   if (!alerts?.length) {
     return (
       <div className="recent-block">
@@ -73,6 +116,7 @@ function RecentAlerts({ alerts, selectedAlert, onSelectAlert, onViewAll }) {
           const s = severityOf(a.confidence)
           const z = a.indicators?.find((i) => i.z_score != null)
           const Icon = a.confidence === 'high' ? Warning : Siren
+          const thumb = thumbs[a.id]
           return (
             <li key={a.id}>
               <button
@@ -81,7 +125,11 @@ function RecentAlerts({ alerts, selectedAlert, onSelectAlert, onViewAll }) {
                 onClick={() => onSelectAlert(a)}
                 title={a.explanation}
               >
-                <Icon size={14} weight="duotone" className="recent-icon" style={{ color: s.color }} />
+                <span className="recent-thumb">
+                  {thumb
+                    ? <img src={thumb} alt={`True colour on ${fmtDate(a.date)}`} loading="lazy" />
+                    : <Icon size={15} weight="duotone" style={{ color: s.color }} />}
+                </span>
                 <span className="recent-body">
                   <span className="recent-line">
                     <span className="recent-alert-title">
@@ -96,6 +144,7 @@ function RecentAlerts({ alerts, selectedAlert, onSelectAlert, onViewAll }) {
                     {z ? ` · ${z.z_score >= 0 ? '+' : ''}${fmtNum(z.z_score, 2)}σ` : ''}
                   </span>
                 </span>
+                <CaretRight size={12} weight="bold" className="recent-chevron" />
               </button>
             </li>
           )
@@ -106,19 +155,20 @@ function RecentAlerts({ alerts, selectedAlert, onSelectAlert, onViewAll }) {
 }
 
 export function DetailPanel({
-  waterbody, stats, loading, alerts, selectedZoneId, onSelectAlert, selectedAlert,
-  series, seriesLoading, seriesError, index, onIndexChange, zoneAlert,
+  waterbody, stats, loading, alerts, selectedZoneId, zoneName, coverUrl,
+  onSelectAlert, selectedAlert, series, seriesLoading, seriesError,
+  index, onIndexChange, zoneAlert,
 }) {
   const [tab, setTab] = useState('Overview')
   if (!waterbody) {
     return (
       <section className="panel detail-panel">
-        <div className="detail-empty">Select a water body.</div>
+        <div className="detail-empty">Search for a water body to begin.</div>
       </section>
     )
   }
 
-  // A body with no cached scenes must not present a confident green "Low":
+  // A body with no cached scenes must not present a confident "Low" badge:
   // that implies "checked, fine" rather than "not analysed yet".
   const hasScenes = Number(stats?.scene_count ?? 0) > 0
   const conf = worstConfidence(alerts)
@@ -127,25 +177,41 @@ export function DetailPanel({
   return (
     <section className="panel detail-panel">
       <div className="detail-head">
-        <div className="detail-title-row">
-          <h2 className="detail-name">{waterbody.name}</h2>
-          <span className="detail-badge" style={{ color: sev.color, borderColor: sev.color }}>
-            {sev.tier}
-          </span>
+        <div className="detail-cover">
+          {coverUrl
+            ? <img src={coverUrl} alt={`Sentinel-2 true colour, ${waterbody.name}`} />
+            : <span className="detail-cover-empty" aria-hidden />}
         </div>
-        <div className="detail-loc mono">
-          <MapPin size={12} weight="duotone" />
-          {waterbody.id}
-        </div>
-        {!hasScenes && (
-          <div className="detail-pending">
-            Processing — historical data not yet available for this water body.
+        <div className="detail-head-main">
+          <div className="detail-title-row">
+            <h2 className="detail-name">{waterbody.name}</h2>
           </div>
-        )}
-        {waterbody.description && (
-          <p className="detail-desc">{waterbody.description}</p>
-        )}
+          <div className="detail-loc mono">
+            <MapPin size={12} weight="duotone" />
+            {waterbody.id}
+          </div>
+          <div className="detail-pills">
+            <span className="detail-badge" style={{ color: sev.color, borderColor: sev.color }}>
+              {sev.tier}
+            </span>
+            {hasScenes && (
+              <span className="detail-badge is-monitoring" title={`${stats.scene_count} real Sentinel-2 scenes`}>
+                Monitoring
+              </span>
+            )}
+          </div>
+        </div>
       </div>
+
+      {!hasScenes && (
+        <div className="detail-pending">
+          Processing — historical data not yet available for this water body.
+        </div>
+      )}
+
+      {waterbody.description && (
+        <p className="detail-desc">{waterbody.description}</p>
+      )}
 
       <div className="detail-tabs">
         {TABS.map((t) => (
@@ -178,8 +244,8 @@ export function DetailPanel({
               />
               <StatRow
                 icon={GridFour}
-                label="Zones"
-                value={stats?.zone_count ?? '—'}
+                label="Zone"
+                value={zoneName ?? '—'}
                 note={
                   stats?.zones_with_geometry
                     ? `${stats.zones_with_geometry} with cached geometry${selectedZoneId ? ` · ${selectedZoneId} selected` : ''}`
@@ -195,6 +261,7 @@ export function DetailPanel({
 
               <RecentAlerts
                 alerts={alerts}
+                waterbodyId={waterbody.id}
                 selectedAlert={selectedAlert}
                 onSelectAlert={onSelectAlert}
                 onViewAll={() => setTab('Alerts')}

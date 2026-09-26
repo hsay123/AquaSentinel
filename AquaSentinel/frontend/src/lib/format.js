@@ -1,13 +1,17 @@
 /**
  * Formatting + the single severity taxonomy.
  *
- * SEVERITY is the one place the badge language is defined. It reconciles the
- * reference UI's High/Medium/Low wording with design.md §3's
- * Normal/Watch/Alert colours and anomaly.py's confidence field:
+ * SEVERITY is the one place the badge language is defined. The triad is
+ * red / amber / blue, applied identically to the sidebar pills, the map status
+ * dots, the indicator cards and the alert badges:
  *
- *   confidence 'high'          -> High          -> --color-alert    (red)
- *   confidence 'needs_review'  -> Medium        -> --color-watch    (amber)
- *   confidence 'none'/absent   -> Low / Normal  -> --color-normal   (green)
+ *   confidence 'high'          -> High    -> red   (#ef4444)
+ *   confidence 'needs_review'  -> Medium  -> amber (#f59e0b)
+ *   confidence 'none'/absent   -> Low     -> blue  (#3b82f6)
+ *
+ * Low is BLUE, not green. There is no green anywhere in this palette: nothing
+ * here measures a lab parameter, so a nominal reading is "nothing to follow up
+ * on", never "certified good". Green would over-claim.
  *
  * severity 0-1, from anomaly.py:
  *   high         = min(1, (max|z|/4) * (1 + 0.2 * n_statistical))
@@ -18,9 +22,9 @@
  */
 
 export const CONFIDENCE_TO_TIER = {
-  high: { tier: 'High', token: 'var(--color-alert)', color: '#C62828', rank: 3 },
-  needs_review: { tier: 'Medium', token: 'var(--color-watch)', color: '#F9A825', rank: 2 },
-  none: { tier: 'Low', token: 'var(--color-normal)', color: '#2E7D32', rank: 1 },
+  high: { tier: 'High', token: 'var(--sev-high)', color: '#ef4444', rank: 3 },
+  needs_review: { tier: 'Medium', token: 'var(--sev-medium)', color: '#f59e0b', rank: 2 },
+  none: { tier: 'Low', token: 'var(--sev-low)', color: '#3b82f6', rank: 1 },
 }
 
 /**
@@ -106,6 +110,19 @@ export function bodyStatus(stats, confidence) {
   }
 }
 
+/** Trend direction, and the colour it should wear.
+ *
+ * These are CONTAMINATION indicators: a rising value is a worsening signal, so
+ * an upward delta is red and a downward one is nominal blue. Never auto-green an
+ * upward arrow — that is the single easiest way to make this dashboard lie.
+ */
+export function deltaTone(changePct) {
+  if (changePct == null || !Number.isFinite(changePct)) return { dir: 'flat', color: 'var(--text-muted)' }
+  if (changePct > 0.5) return { dir: 'up', color: 'var(--sev-high)' }
+  if (changePct < -0.5) return { dir: 'down', color: 'var(--sev-low)' }
+  return { dir: 'flat', color: 'var(--text-muted)' }
+}
+
 /** The trend rule, applied identically everywhere:
  *  (latest value - seasonal baseline mean) / |baseline mean| * 100
  *  Returns null when it cannot be computed honestly (no baseline, zero mean,
@@ -177,5 +194,5 @@ export const INDEX_META = {
   ndti: { label: 'Turbidity (NDTI)', short: 'NDTI', unit: 'reflectance index' },
   ndci: { label: 'Chlorophyll-a (NDCI)', short: 'NDCI', unit: 'reflectance index' },
   fai: { label: 'Floating Algae (FAI)', short: 'FAI', unit: 'reflectance index' },
-  texture_score: { label: 'Surface Texture', short: 'Texture', unit: 'score' },
+  texture_score: { label: 'Texture Anomaly', short: 'Texture', unit: 'score' },
 }
