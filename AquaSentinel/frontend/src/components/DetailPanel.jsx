@@ -43,7 +43,7 @@ export function DetailPanel({
   const [tab, setTab] = useState('Overview')
   if (!waterbody) {
     return (
-      <section className="panel detail-panel float-right-card">
+      <section className="panel detail-panel">
         <div className="detail-empty">Select a water body.</div>
       </section>
     )
@@ -56,7 +56,7 @@ export function DetailPanel({
   const sev = hasScenes ? severityOf(conf) : { tier: 'No data', color: 'var(--text-muted)' }
 
   return (
-    <section className="panel detail-panel float-right-card">
+    <section className="panel detail-panel">
       <div className="detail-head">
         <div className="detail-title-row">
           <h2 className="detail-name">{waterbody.name}</h2>
