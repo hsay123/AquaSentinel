@@ -24,8 +24,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer, GeoJSON, ImageOverlay, Pane, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
-import { CaretLeft, CaretRight } from '@phosphor-icons/react'
-import { getIndexMap, getTrueColor } from '../api/client.js'
+import { ArrowsOut, CaretLeft, CaretRight } from '@phosphor-icons/react'
+import { getIndexOverlay, getTrueColorRaster } from '../api/client.js'
 import { INDEX_META, fmtDate, fmtNum } from '../lib/format.js'
 import { Skeleton, Unavailable, ErrorNote } from './States.jsx'
 
@@ -43,6 +43,24 @@ function FlyTo({ bounds }) {
     }
   }, [map, bounds])
   return null
+}
+
+/** "Reset view" button: fit the map back to the water body's full extent. */
+function ResetView({ bounds }) {
+  const map = useMap()
+  if (!bounds || bounds.length !== 4) return null
+  const [w, s, e, n] = bounds
+  return (
+    <button
+      type="button"
+      className="map-reset"
+      title="Reset view to the full water-body extent"
+      onClick={() => map.fitBounds([[s, w], [n, e]], { padding: [30, 30] })}
+    >
+      <ArrowsOut size={13} weight="bold" />
+      Reset view
+    </button>
+  )
 }
 
 function aoiBounds(geojson) {
@@ -84,7 +102,7 @@ export function MapPanel({
     if (!waterbody || !date) { setBase({ state: 'idle', data: null, error: null }); return }
     let dead = false
     setBase({ state: 'loading', data: null, error: null })
-    getTrueColor(waterbody.id, date)
+    getTrueColorRaster(waterbody.id, date)
       .then((d) => { if (!dead) setBase(d ? { state: 'ready', data: d, error: null } : { state: 'unavailable', data: null, error: null }) })
       .catch((e) => { if (!dead) setBase({ state: 'unavailable', data: null, error: e }) })
     return () => { dead = true }
@@ -95,7 +113,7 @@ export function MapPanel({
     if (!waterbody || !date) { setHeat({ state: 'idle', data: null, error: null }); return }
     let dead = false
     setHeat({ state: 'loading', data: null, error: null })
-    getIndexMap(waterbody.id, index, date)
+    getIndexOverlay(waterbody.id, index, date)
       .then((d) => { if (!dead) setHeat(d ? { state: 'ready', data: d, error: null } : { state: 'unavailable', data: null, error: null }) })
       .catch((e) => { if (!dead) setHeat({ state: 'unavailable', data: null, error: e }) })
     return () => { dead = true }
@@ -185,7 +203,12 @@ export function MapPanel({
 
   const styleFor = (feature) => styleForId(feature.properties.id)
 
-  const bounds = aoiBounds(waterbody?.aoi_geojson)
+  // Memoised: a fresh array here would make FlyTo's effect re-run on every
+  // render and yank the view back to the AOI, making the map impossible to pan.
+  const bounds = useMemo(
+    () => aoiBounds(waterbody?.aoi_geojson),
+    [waterbody?.aoi_geojson],
+  )
   const baseCorners = toCorners(base.data?.bounds)
   const heatCorners = toCorners(heat.data?.bounds)
   const heatReady = showHeatmap && heat.state === 'ready' && heatCorners
@@ -194,6 +217,7 @@ export function MapPanel({
 
   return (
     <section className="panel map-panel">
+      {/* Head is positioned by CSS as the floating left control panel. */}
       <div className="panel-head">
         <div className="panel-title">
           <span>{waterbody ? waterbody.name : 'Select a water body'}</span>
@@ -224,13 +248,17 @@ export function MapPanel({
       </div>
 
       <div className="map-canvas">
-        {waterbody ? (
+        {!bounds ? (
+          <div className="map-loading">
+            {waterbody ? 'Loading water-body bounds…' : 'Select a water body'}
+          </div>
+        ) : (
           <MapContainer
             center={[28.56, 77.31]}
             zoom={12}
             scrollWheelZoom
             className="map"
-            zoomControl={false}
+            zoomControl={true}
             attributionControl={false}
           >
             {/* Fallback context, beneath the real imagery. */}
@@ -248,7 +276,7 @@ export function MapPanel({
             {/* Real per-pixel index raster, above the imagery. */}
             <Pane name="heatmap" style={{ zIndex: 320 }}>
               {heatReady && (
-                <ImageOverlay url={heat.data.image_url} bounds={heatCorners} opacity={0.75} />
+                <ImageOverlay url={heat.data.image_url} bounds={heatCorners} opacity={0.7} />
               )}
             </Pane>
 
@@ -265,9 +293,8 @@ export function MapPanel({
             </Pane>
 
             <FlyTo bounds={bounds} />
+            <ResetView bounds={bounds} />
           </MapContainer>
-        ) : (
-          <div className="map-placeholder">No water body selected.</div>
         )}
 
         {/* Date navigator: only real scene dates are offered. */}

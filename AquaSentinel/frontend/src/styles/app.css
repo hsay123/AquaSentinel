@@ -1461,3 +1461,252 @@ body {
     overflow-y: auto;
   }
 }
+
+/* Zoom controls: re-enabled after being disabled by mistake. Positioned
+   top-right so they clear the date navigator (top-centre) and the legend
+   (bottom-left). */
+.leaflet-control-zoom { border: 1px solid var(--glass-border) !important; }
+.leaflet-control-zoom a {
+  background: rgba(10, 15, 22, 0.86) !important;
+  color: var(--text-primary) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  font-family: var(--font-mono);
+}
+.leaflet-control-zoom a:hover { background: var(--bg-elevated) !important; color: var(--border-focus) !important; }
+
+.map-reset {
+  position: absolute; top: var(--space-2); right: var(--space-2); z-index: 600;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 8px; font-size: 0.58rem; font-family: var(--font-mono);
+  background: rgba(10, 15, 22, 0.86); border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm); color: var(--text-secondary);
+  cursor: pointer; backdrop-filter: blur(8px);
+}
+.map-reset:hover { color: var(--border-focus); border-color: var(--border-focus); }
+
+/* ==========================================================================
+   FULL-BLEED MAP LAYOUT
+   Layout/CSS shell ported from the deployed GeoVisionAI/HackPreneur app
+   (yccehack.vercel.app): `.app` is a positioned 100dvh viewport, the map is an
+   absolutely-positioned `inset: 0` background layer, and every control floats
+   above it in translucent panels. Only the layout shell was ported - none of
+   that app's detection logic or copy.
+   ========================================================================== */
+
+.app {
+  position: relative;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+.main { position: relative; height: 100%; min-width: 0; }
+
+/* Map: the base layer of the page, not a grid cell. */
+.map-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.map-stage .map-panel {
+  height: 100%;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+.map-stage .map-panel .panel-head { display: none; }   /* controls move to the floating panel */
+.map-stage .map-canvas { height: 100%; }
+.map-stage .map-status {
+  position: absolute;
+  left: 372px; bottom: 14px; z-index: 600;
+  background: rgba(10, 15, 22, 0.86);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px; backdrop-filter: blur(8px);
+}
+
+/* Everything else floats over the map. */
+.overlay-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;          /* map stays pannable between panels */
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr) 320px;
+  grid-template-rows: 1fr auto;
+  grid-template-areas:
+    "left  .      right"
+    ".     bottom bottom";
+  gap: 16px;
+  padding: 16px;
+}
+.overlay-layer > * { pointer-events: auto; }
+
+/* Slim floating top bar: branding + KPI strip + GEE chip. */
+.float-top {
+  position: absolute;
+  top: 12px; left: 12px; right: 12px;
+  z-index: 30;
+  display: flex; align-items: center; gap: 16px;
+  padding: 8px 14px;
+  background: rgba(10, 15, 22, 0.82);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-md);
+}
+.float-top .kpi-strip { gap: 18px; }
+.float-top .kpi-tile { min-width: 92px; }
+.float-top .kpi-label { font-size: 0.54rem; }
+.float-top .kpi-value { font-size: 1rem; }
+.float-top .kpi-sub { font-size: 0.52rem; }
+
+/* Left floating control panel (Region & Signal pattern). */
+.float-left {
+  grid-area: left;
+  align-self: start;
+  max-height: calc(100dvh - 120px);
+  overflow-y: auto;
+  background: rgba(10, 15, 22, 0.82);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-md);
+}
+.float-right {
+  grid-area: right;
+  align-self: start;
+  max-height: calc(100dvh - 120px);
+  overflow-y: auto;
+  background: rgba(10, 15, 22, 0.86);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-md);
+}
+.float-bottom {
+  grid-area: bottom;
+  display: grid;
+  grid-template-columns: minmax(240px, 0.9fr) minmax(320px, 1.5fr) minmax(260px, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+/* Panels inside the floating layer are themselves transparent cards. */
+.float-left > .panel, .float-right > .panel, .float-bottom > .panel {
+  background: rgba(16, 24, 33, 0.9);
+  border-color: var(--glass-border);
+  box-shadow: var(--shadow-md);
+}
+.float-left .panel-head, .float-bottom .panel-head, .float-right .detail-head {
+  background: transparent;
+}
+
+/* The hero is redundant once the map is the page. */
+.hero { display: none; }
+
+/* MapPanel's own head becomes the floating left "Region & Signal" panel:
+   index toggle + overlay checkbox, with no state lifted out of the map. */
+.map-stage .map-panel .panel-head {
+  display: flex;
+  position: absolute;
+  top: 96px; left: 12px;
+  z-index: 25;
+  width: 340px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(10, 15, 22, 0.84);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-md);
+}
+.map-stage .map-panel .panel-title { font-size: 0.78rem; }
+.map-stage .map-controls { justify-content: space-between; }
+
+/* The nav sidebar also floats rather than occupying a column. */
+.app > .sidebar {
+  position: absolute;
+  top: 96px; left: 12px;
+  bottom: 210px;
+  width: 340px;
+  z-index: 26;
+  background: rgba(10, 15, 22, 0.84);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-md);
+}
+.overlay-layer { grid-template-columns: 372px minmax(0, 1fr) 320px; }
+
+/* Compact "Coming soon" nav rows: clearly secondary to working items. */
+.nav-item.is-disabled { opacity: 0.34; padding: 3px var(--space-2); font-size: 0.72rem; }
+.nav-soon {
+  margin-left: auto; font-family: var(--font-mono); font-size: 0.5rem;
+  text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);
+}
+
+/* Left column stacking: index toggle above, nav/water-bodies below. */
+.app > .sidebar { top: 208px; }
+
+/* Right-docked water-body detail panel: real content the judge reads, so it
+   stays a solid card rather than a translucent overlay. */
+.float-right-card {
+  align-self: start;
+  max-height: calc(100dvh - 300px);
+  overflow-y: auto;
+  background: rgba(13, 19, 27, 0.94);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Bottom analysis strip sits clear of the map's centre. */
+.float-bottom { max-height: 200px; }
+.float-bottom > .panel { min-height: 0; }
+.float-bottom .ind-grid { grid-template-columns: repeat(2, 1fr); gap: 6px; padding: 8px; }
+.float-bottom .ind-value { font-size: 0.9rem; }
+.float-bottom .ind-name { font-size: 0.52rem; }
+.float-bottom .ts-chart { min-height: 0 !important; }
+.float-bottom .ba-stage { min-height: 96px; }
+.float-bottom .ba-note { display: none; }
+.float-bottom .panel-head { padding: 5px 10px; }
+.float-bottom .panel-title { font-size: 0.66rem; }
+
+/* ==========================================================================
+   CRITICAL FIX — the full-bleed layout was being fought by a leftover rule.
+   An earlier `.app { display: grid; grid-template-columns: 264px 1fr; }`
+   further up this file was still in effect: CSS is not additive, so setting
+   position/height/overflow on `.app` did NOT disable it. The grid stayed
+   active while the sidebar and overlay layer were made position:absolute,
+   which collapsed the page into a 264px column - producing unpositioned
+   floating elements, a blank map area, and a sidebar that appeared empty.
+   Resetting display here is what makes the full-bleed layout actually apply.
+   ========================================================================== */
+.app {
+  display: block;            /* overrides the stale display:grid above */
+  width: 100%;
+  height: 100dvh;
+  position: relative;
+  overflow: hidden;
+}
+
+.main {
+  position: absolute;        /* fill the viewport, not a grid cell */
+  inset: 0;
+  display: block;
+}
+
+/* The old dashboard grid is no longer used; keep it inert if anything
+   still references the class. */
+.grid { display: contents; }
+
+/* Map loading state. Mounting Leaflet without real bounds falls back to its
+   default [0,0] zoom 2 (the whole world), so we show this instead and fit to
+   the real AOI the moment it arrives. */
+.map-loading {
+  display: grid; place-items: center; height: 100%;
+  color: var(--text-muted); font-size: 0.8rem;
+  background: #05080c;
+}
