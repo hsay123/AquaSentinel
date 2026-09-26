@@ -75,10 +75,24 @@ class IndicatorDetail(BaseModel):
 
 
 class AlertEvidence(BaseModel):
+    """Evidence for one alert.
+
+    Imagery fields are Optional because the alert feed deliberately does NOT
+    render Earth Engine imagery inline (that issued ~3 GEE calls per flagged
+    zone and stalled the feed). They are populated on demand via
+    ``GET /alerts/evidence``; until then they are null, which the UI renders as
+    an explicit "unavailable" state rather than a blank image.
+    """
+
     before_scene_id: Optional[str] = None
     after_scene_id: str
-    index_map_png_path: str
-    chart_png_path: str
+    before_date: Optional[str] = None
+    after_date: Optional[str] = None
+    index_map_png_path: Optional[str] = None
+    chart_png_path: Optional[str] = None
+    before_truecolor_png_path: Optional[str] = None
+    after_truecolor_png_path: Optional[str] = None
+    render_error: Optional[str] = None
 
 
 class AlertResponse(BaseModel):

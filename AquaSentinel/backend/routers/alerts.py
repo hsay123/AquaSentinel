@@ -84,8 +84,18 @@ async def get_alerts(
             groq_key = os.environ.get("GROQ_API_KEY")
             explanation, generated = llm_polish_explanation(raw_explanation, groq_key)
 
-            # Generate evidence (placeholder paths)
-            evidence = generate_evidence_for_alert(flag, {}, TS_STORE, BASELINE_STORE, EVIDENCE_DIR)
+            # Feed-level evidence: real before/after DATES plus the local
+            # time-series chart. Imagery is rendered on demand via
+            # GET /alerts/evidence, because rendering it here would issue
+            # ~3 Earth Engine calls per flagged zone and stall the whole feed.
+            evidence = generate_evidence_for_alert(
+                flag,
+                {},
+                TS_STORE,
+                BASELINE_STORE,
+                EVIDENCE_DIR,
+                render_imagery=False,
+            )
 
             # Build alert
             alert = build_alert(
@@ -121,13 +131,90 @@ async def get_alert(alert_id: str, waterbody_id: str = Query(...)):
     raise HTTPException(status_code=404, detail="Alert not found")
 
 
-@router.get("/{alert_id}/evidence")
-async def get_alert_evidence(alert_id: str, waterbody_id: str = Query(...)):
-    """Get evidence images for an alert."""
-    alert_response = await get_alert(alert_id, waterbody_id)
-    evidence = alert_response.evidence
+@router.get("/evidence")
+async def render_alert_evidence(
+    waterbody_id: str = Query(...),
+    zone_id: str = Query(...),
+    date: str = Query(..., description="ISO date of the flagged observation"),
+):
+    """Render the real evidence pair for one flagged zone/date, on demand.
 
-    # Return the index map PNG
-    if evidence.index_map_png_path and os.path.exists(evidence.index_map_png_path):
-        return FileResponse(evidence.index_map_png_path, media_type="image/png")
-    raise HTTPException(status_code=404, detail="Evidence image not found")
+    Stateless (no alert id to look up) and cached on disk, so the alert feed can
+    stay fast while the before/after imagery is produced only when a user
+    actually opens an alert.
+    """
+    if waterbody_id not in WATERBODIES_REGISTRY:
+        raise HTTPException(status_code=404, detail="Water body not found")
+
+    df = TS_STORE.query(waterbody_id, zone_id)
+    if df.empty:
+        raise HTTPException(status_code=404, detail="No cached observations for that zone")
+
+    import pandas as pd
+
+    rows = df[pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d") == date]
+    if rows.empty:
+        raise HTTPException(
+            status_code=404, detail=f"No cached observation for {zone_id} on {date}"
+        )
+    row = rows.iloc[-1]
+
+    month = pd.Timestamp(date).month
+    indicators = []
+    for idx in ("ndti", "ndci", "fai"):
+        value = row.get(idx)
+        z = None
+        try:
+            baseline = BASELINE_STORE.get_baseline(waterbody_id, zone_id, idx, month)
+            if baseline and value is not None and baseline[1]:
+                z = (float(value) - float(baseline[0])) / float(baseline[1])
+        except Exception:
+            z = None
+        indicators.append({
+            "name": idx,
+            "value": None if value is None else float(value),
+            "z_score": z,
+        })
+
+    statistical = [
+        i["name"] for i in indicators if i["z_score"] is not None and abs(i["z_score"]) >= 2
+    ]
+    from backend.pipeline.anomaly import AnomalyFlag
+
+    max_abs_z = max((abs(i["z_score"]) for i in indicators if i["z_score"]), default=0.0)
+    flag = AnomalyFlag(
+        waterbody_id=waterbody_id,
+        zone_id=zone_id,
+        date=pd.Timestamp(date).date(),
+        scene_id=str(row.get("scene_id") or ""),
+        statistical_indices=statistical,
+        confidence="high" if statistical else "needs_review",
+        severity=min(1.0, (max_abs_z / 4.0) * (1 + 0.2 * len(statistical))),
+    )
+
+    evidence = generate_evidence_for_alert(
+        flag,
+        {},
+        TS_STORE,
+        BASELINE_STORE,
+        EVIDENCE_DIR,
+        aoi_geojson=WATERBODIES_REGISTRY[waterbody_id].aoi_geojson,
+        render_imagery=True,
+    )
+
+    def _url(path):
+        return f"/evidence-assets/{os.path.basename(path)}" if path else None
+
+    return {
+        "waterbody_id": waterbody_id,
+        "zone_id": zone_id,
+        "date": date,
+        "indicators": indicators,
+        "before_date": evidence.get("before_date"),
+        "after_date": evidence.get("after_date"),
+        "before_image_url": _url(evidence.get("before_truecolor_png_path")),
+        "after_image_url": _url(evidence.get("after_truecolor_png_path")),
+        "index_map_url": _url(evidence.get("index_map_png_path")),
+        "chart_url": _url(evidence.get("chart_png_path")),
+        "render_error": evidence.get("render_error"),
+    }

@@ -30,6 +30,7 @@ from backend.pipeline.water_mask import (
     create_zone_grid,
 )
 from backend.pipeline.indices import compute_all_indices, texture_anomaly_numpy
+from backend.pipeline.geometry_store import ZoneGeometryStore, water_boundary_area_m2
 from backend.pipeline.timeseries_store import TimeseriesStore, BaselineStore, Observation
 
 # Demo AOI configurations matching DEMO_AOIS.md
@@ -47,7 +48,13 @@ DEMO_AOIS = {
             ]],
         },
         "baseline_start": date(2022, 9, 1),
-        "baseline_end": date(2023, 9, 10),  # Up to the 2023-09-10 foam event
+        # Extends PAST the event on purpose. Sentinel-2 revisits every 5 days, so
+        # there is no scene on 2023-09-10 itself, and the nearest revisits
+        # (09-06, 09-11) are cloudy at this AOI. The window originally ended on
+        # the event date, which meant the cache stopped at 2023-09-01 and the
+        # foam event was unobservable -> 0 alerts. Reaching 2023-10-31 pulls in
+        # the first genuinely post-event clear scenes (09-21, 10-01, ...).
+        "baseline_end": date(2023, 10, 31),
         "event_date": date(2023, 9, 10),
         "tiles": ["T43QPG", "T44QPE"],
     },
@@ -176,6 +183,22 @@ def fetch_and_process_aoi(waterbody_id: str, config: dict) -> None:
     if not zones:
         print("ERROR: No zones created - water body too small or not detected")
         return
+
+    # Persist the zone grid + real water-body stats. Without this the polygons
+    # are lost and /waterbodies/{id}/zones has nothing to serve.
+    geometry_store = ZoneGeometryStore(DATA_ROOT + "/geometry")
+    water_area = water_boundary_area_m2(water_result.boundary_geojson)
+    geometry_store.save(
+        waterbody_id,
+        zones,
+        reference_scene_id=water_result.scene_id,
+        reference_scene_date=water_result.scene_date,
+        otsu_threshold=water_result.otsu_threshold,
+        water_fraction=water_result.water_fraction,
+        water_area_m2=water_area,
+    )
+    print(f"  Saved zone geometry + water area {water_area/1e6:.3f} km^2 "
+          f"to {DATA_ROOT}/geometry/wb={waterbody_id}/zones.geojson")
 
     # Initialize stores
     ts_store = TimeseriesStore(DATA_ROOT + "/timeseries")

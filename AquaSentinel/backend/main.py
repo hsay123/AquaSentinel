@@ -8,9 +8,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from backend.gee_client import GeeUnavailableError, diagnose, initialize as gee_initialize
-from backend.routers import waterbody, alerts, ingest
+from backend.routers import waterbody, alerts, ingest, renders
+from backend.routers.waterbody import DATA_ROOT
 
 logger = logging.getLogger("aquasentinel")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -51,12 +53,14 @@ async def lifespan(app: FastAPI):
         }
         _log_gee_failure(app.state.gee)
 
-    # Ensure data directories exist (resolved against the repo root so the
-    # process CWD doesn't decide which data tree gets used)
-    data_root = _data_root()
-    os.makedirs(data_root + "/timeseries", exist_ok=True)
-    os.makedirs(data_root + "/baselines", exist_ok=True)
-    os.makedirs(data_root + "/evidence", exist_ok=True)
+    # Ensure data directories exist. DATA_ROOT is resolved against the REPO
+    # root by backend.routers.waterbody and imported here so there is exactly
+    # one definition -- a second resolver here previously pointed at
+    # backend/data while the precompute wrote to <repo>/data.
+    data_root = DATA_ROOT
+    os.makedirs(os.path.join(data_root, "timeseries"), exist_ok=True)
+    os.makedirs(os.path.join(data_root, "baselines"), exist_ok=True)
+    os.makedirs(os.path.join(data_root, "evidence"), exist_ok=True)
 
     yield
 
@@ -65,13 +69,10 @@ async def lifespan(app: FastAPI):
 
 
 def _data_root() -> str:
-    """Absolute data root, so a teammate starting uvicorn from backend/ (or the
-    repo root) ends up reading the same cache instead of silently creating a
-    second empty one."""
-    configured = os.environ.get("AQUASENTINEL_DATA_ROOT", "./data")
-    if os.path.isabs(configured):
-        return configured
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), configured)
+    """Absolute data root, re-exported from the single definition in
+    backend.routers.waterbody so the API, the precompute and the static mounts
+    can never disagree about where the cache lives."""
+    return DATA_ROOT
 
 
 def _log_gee_failure(report: dict) -> None:
@@ -115,6 +116,26 @@ app.add_middleware(
 app.include_router(waterbody.router)
 app.include_router(alerts.router)
 app.include_router(ingest.router)
+app.include_router(renders.router)
+
+# Rendered Sentinel-2 PNGs. Mounted on a separate path from the /renders API
+# prefix on purpose: with FastAPI 0.141 an included router claims its prefix and
+# returns 404 for unmatched subpaths, so a Mount sharing "/renders" is never
+# reached for the image files. These are build artifacts and are gitignored.
+os.makedirs(os.path.join(DATA_ROOT, "renders"), exist_ok=True)
+os.makedirs(os.path.join(DATA_ROOT, "evidence"), exist_ok=True)
+app.mount(
+    "/render-assets",
+    StaticFiles(directory=os.path.join(DATA_ROOT, "renders")),
+    name="render-assets",
+)
+# Alert evidence PNGs: real index maps, true-colour before/after pairs and
+# time-series charts for the flagged event.
+app.mount(
+    "/evidence-assets",
+    StaticFiles(directory=os.path.join(DATA_ROOT, "evidence")),
+    name="evidence-assets",
+)
 
 
 @app.get("/health")

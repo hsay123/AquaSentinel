@@ -157,54 +157,124 @@ def generate_timeseries_chart(
     plt.close(fig)
 
 
+def _nearest_prior_date(history, flag_date):
+    """The most recent real observation strictly before the flagged date.
+
+    Used as the "before" side of the evidence pair, so the comparison is two
+    genuine acquisitions rather than an arbitrary date.
+    """
+    if history is None or history.empty:
+        return None
+    import pandas as pd
+
+    dates = pd.to_datetime(history["date"])
+    prior = dates[dates < pd.Timestamp(flag_date)]
+    if prior.empty:
+        return None
+    return prior.max().date()
+
+
 def generate_evidence_for_alert(
     flag: AnomalyFlag,
     zone_polygon: dict,
     timeseries_store: TimeseriesStore,
     baseline_store,
     evidence_dir: Path,
+    aoi_geojson: Optional[dict] = None,
+    render_imagery: bool = True,
 ) -> dict:
-    """Generate all evidence images for an alert and return paths.
+    """Generate evidence images for an alert and return their paths.
 
-    This is a placeholder that creates the expected file structure.
-    The actual index arrays would come from the pipeline's local computation.
+    ``render_imagery=False`` produces the cheap local artefacts (the time-series
+    chart) and the real before/after DATES, but skips the Earth Engine renders.
+
+    This exists because ``GET /alerts`` fans out over every zone: with imagery
+    rendering inline, a water body with ~70 flagged zones issued ~200 Earth
+    Engine calls per request and the feed took minutes. Imagery is now rendered
+    on demand via ``GET /alerts/evidence``; the feed carries dates and the chart
+    only.
+
+    If Earth Engine cannot produce the imagery (offline, no valid pixels) the
+    paths are ``None`` and ``render_error`` explains why, so the UI shows
+    "unavailable" instead of a blank or fake image.
     """
+    evidence_dir = Path(evidence_dir)  # callers pass a str; this code needs .mkdir()
     evidence_dir.mkdir(parents=True, exist_ok=True)
 
-    # For now, create placeholder paths
-    # In the full pipeline, these would be generated from actual index arrays
-    index_map_path = evidence_dir / f"{flag.waterbody_id}_{flag.zone_id}_{flag.date}_indices.png"
-    chart_path = evidence_dir / f"{flag.waterbody_id}_{flag.zone_id}_{flag.date}_chart.png"
-
-    # Create placeholder images (in real pipeline, replace with actual data)
-    fig, axes = plt.subplots(2, 2, figsize=(8, 8), dpi=150)
-    for ax, idx in zip(axes.flat, ["ndti", "ndci", "fai", "texture_score"]):
-        ax.text(0.5, 0.5, f"{idx.upper()}\n[Evidence Image]", ha="center", va="center", transform=ax.transAxes)
-        ax.set_title(idx.upper())
-        ax.axis("off")
-    fig.suptitle(f"Alert Evidence — {flag.waterbody_id} / {flag.zone_id} / {flag.date}")
-    fig.savefig(index_map_path, bbox_inches="tight")
-    plt.close(fig)
-
-    # Generate time-series chart for the primary flagged index
-    primary_idx = flag.statistical_indices[0] if flag.statistical_indices else "ndci"
     history = timeseries_store.query(flag.waterbody_id, flag.zone_id)
+    before_date = _nearest_prior_date(history, flag.date)
+    after_date = flag.date
 
-    baseline = None
-    if hasattr(baseline_store, "get_baseline"):
-        baseline = baseline_store.get_baseline(flag.waterbody_id, flag.zone_id, primary_idx, flag.date.month)
+    index_map_path: Optional[str] = None
+    before_truecolor: Optional[str] = None
+    after_truecolor: Optional[str] = None
+    render_error: Optional[str] = None
 
-    generate_timeseries_chart(
-        history, flag.zone_id, primary_idx, flag.date,
-        getattr(flag, f"{primary_idx}_z", 0) or 0,
-        baseline[0] if baseline else None,
-        baseline[1] if baseline else None,
-        chart_path,
-    )
+    if render_imagery and aoi_geojson is None:
+        render_error = "No AOI geometry available for this water body."
+    elif render_imagery:
+        from backend.pipeline.render import render_index_map, render_true_color
+
+        primary_idx_render = flag.statistical_indices[0] if flag.statistical_indices else "ndci"
+        try:
+            index_meta = render_index_map(
+                aoi_geojson,
+                flag.waterbody_id,
+                primary_idx_render,
+                after_date.isoformat() if hasattr(after_date, "isoformat") else str(after_date),
+                evidence_dir,
+            )
+            index_map_path = index_meta["path"]
+        except Exception as exc:
+            render_error = f"Index map unavailable: {exc}"
+
+        for target, when in (("after", after_date), ("before", before_date)):
+            if when is None:
+                continue
+            try:
+                tc = render_true_color(
+                    aoi_geojson,
+                    flag.waterbody_id,
+                    when.isoformat() if hasattr(when, "isoformat") else str(when),
+                    evidence_dir,
+                )
+                if target == "after":
+                    after_truecolor = tc["path"]
+                else:
+                    before_truecolor = tc["path"]
+            except Exception as exc:
+                render_error = (render_error or "") + f" True-colour {target} unavailable: {exc}"
+
+    # Time-series chart with the real baseline band and the real z-score.
+    # Also skipped in feed mode: 74 matplotlib renders dominated the feed's
+    # 86s response time. The on-demand evidence endpoint draws it.
+    primary_idx = flag.statistical_indices[0] if flag.statistical_indices else "ndci"
+    chart_path = evidence_dir / f"{flag.waterbody_id}_{flag.zone_id}_{flag.date}_chart.png"
+    chart_value: Optional[str] = None
+
+    if render_imagery:
+        baseline = None
+        if hasattr(baseline_store, "get_baseline"):
+            baseline = baseline_store.get_baseline(
+                flag.waterbody_id, flag.zone_id, primary_idx, flag.date.month
+            )
+        generate_timeseries_chart(
+            history, flag.zone_id, primary_idx, flag.date,
+            getattr(flag, f"{primary_idx}_z", 0) or 0,
+            baseline[0] if baseline else None,
+            baseline[1] if baseline else None,
+            chart_path,
+        )
+        chart_value = str(chart_path)
 
     return {
-        "before_scene_id": "",  # Would be filled from actual baseline scene
+        "before_scene_id": before_date.isoformat() if before_date else "",
         "after_scene_id": flag.scene_id,
-        "index_map_png_path": str(index_map_path),
-        "chart_png_path": str(chart_path),
+        "before_date": before_date.isoformat() if before_date else None,
+        "after_date": after_date.isoformat() if hasattr(after_date, "isoformat") else str(after_date),
+        "index_map_png_path": index_map_path,
+        "before_truecolor_png_path": before_truecolor,
+        "after_truecolor_png_path": after_truecolor,
+        "render_error": render_error.strip() if render_error else None,
+        "chart_png_path": chart_value,
     }
