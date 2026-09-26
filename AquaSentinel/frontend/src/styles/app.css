@@ -1830,3 +1830,70 @@ body {
   box-shadow: none; backdrop-filter: none;
 }
 .hero { display: none; }
+
+/* ==========================================================================
+   SIDEBAR — brand wordmark, nav alert badge, Sentinel-2 spec card.
+   The product-boundary card (.boundary-card) is permanent by design: the
+   "not a lab replacement" statement is a stated judging criterion and must
+   stay visible on every view, so it is never a tooltip or modal.
+   ========================================================================== */
+.sidebar { width: 260px; flex: 0 0 260px; }
+/* Two-tone wordmark: "Aqua" default, "Sentinel" blue accent. */
+.brand-name { display: flex; align-items: baseline; letter-spacing: -0.01em; }
+.brand-aqua { color: var(--text-primary); }
+.brand-sentinel { color: var(--border-focus); }
+.brand-sub {
+  font-size: 0.6rem; line-height: 1.35; color: var(--text-muted);
+  max-width: 190px; margin-top: 2px;
+}
+/* Blue-gradient drop mark. */
+.brand-mark {
+  display: grid; place-items: center;
+  background: linear-gradient(140deg, #38c8ff, #2563eb);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 2px 10px rgba(56, 200, 255, 0.28);
+}
+.nav { gap: 2px; }
+.nav-item { position: relative; }
+/* Real alert count, right-aligned. */
+.nav-badge {
+  margin-left: auto;
+  min-width: 18px; padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(239, 68, 68, 0.16);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.34);
+  font-size: 0.6rem; font-weight: 600; line-height: 1.5;
+  text-align: center;
+}
+.nav-item .nav-soon { margin-left: auto; }
+
+/* Sentinel-2 card: heading / subheading / spec lines / external link. */
+.info-card { display: flex; flex-direction: column; gap: 5px; }
+.info-card-head { display: flex; align-items: center; gap: 6px; }
+.info-card-sub {
+  font-size: 0.64rem; color: var(--text-primary); font-weight: 500;
+}
+.info-specs {
+  margin: 1px 0 0; padding: 0; list-style: none;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.info-specs li {
+  position: relative; padding-left: 11px;
+  font-size: 0.62rem; color: var(--text-secondary);
+}
+.info-specs li::before {
+  content: ''; position: absolute; left: 0; top: 0.52em;
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--border-focus); opacity: 0.75;
+}
+.info-link {
+  margin-top: 2px;
+  font-size: 0.63rem; color: var(--border-focus);
+  text-decoration: none; font-weight: 500;
+}
+.info-link:hover { text-decoration: underline; }
+
+/* Detail column to the brief's 340px. */
+.main-row > .detail-panel { flex: 0 0 340px; }

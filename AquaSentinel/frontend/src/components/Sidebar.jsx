@@ -6,7 +6,7 @@
  * dismissable bottom bar, so it stays visible on every view.
  */
 
-import { Broadcast, Drop, Graph, Info, MapTrifold, Siren, Stack, Warning } from '@phosphor-icons/react'
+import { Drop, Graph, Info, MapTrifold, ShieldCheck, Siren, Stack, Warning } from '@phosphor-icons/react'
 import { bodyStatus, worstConfidence, fmtArea } from '../lib/format.js'
 
 const NAV = [
@@ -23,13 +23,22 @@ const NAV = [
 export function Sidebar({
   active, onNavigate, waterbodies, statsById, alertsById, selectedId, onSelect,
 }) {
+  // Real, already-loaded alert rows only. Never a placeholder number.
+  const alertCount = Object.values(alertsById ?? {}).reduce(
+    (n, list) => n + (Array.isArray(list) ? list.length : 0),
+    0,
+  )
+
   return (
     <aside className="sidebar">
       <div className="brand">
-        <span className="brand-mark"><Drop size={18} weight="duotone" /></span>
+        <span className="brand-mark"><Drop size={18} weight="regular" /></span>
         <div>
-          <div className="brand-name">AquaSentinel</div>
-          <div className="brand-sub">Water quality early warning</div>
+          <div className="brand-name">
+            <span className="brand-aqua">Aqua</span>
+            <span className="brand-sentinel">Sentinel</span>
+          </div>
+          <div className="brand-sub">Satellite Intelligence for Cleaner Water</div>
         </div>
       </div>
 
@@ -45,10 +54,14 @@ export function Sidebar({
               disabled={!item.enabled}
               title={item.enabled ? item.label : `${item.label} — not built in this release`}
             >
-              <Icon size={15} weight="duotone" />
+              <Icon size={15} weight="regular" />
               <span>{item.label}</span>
-              {/* Neutral, non-numeric. Never surface an HTTP status or a
-                  fabricated count here. */}
+              {/* Count comes from the real loaded alerts for every registered
+                  body. Rendered only once at least one body has a loaded alert
+                  set, so "not loaded yet" is never shown as a real zero. */}
+              {item.id === 'alerts' && alertCount > 0 && (
+                <span className="nav-badge">{alertCount}</span>
+              )}
               {!item.enabled && <span className="nav-soon">Coming soon</span>}
             </button>
           )
@@ -94,19 +107,28 @@ export function Sidebar({
       <div className="sidebar-foot">
         <div className="info-card">
           <div className="info-card-head">
-            <Broadcast size={13} weight="duotone" />
-            <span>Sentinel-2 real satellite data</span>
+            <Drop size={13} weight="regular" />
+            <span>Sentinel-2</span>
           </div>
-          <p>
-            All indices are computed from genuine Sentinel-2 L2A surface reflectance
-            retrieved from Google Earth Engine. Nothing is simulated.
-          </p>
+          <div className="info-card-sub">Real satellite data</div>
+          <ul className="info-specs">
+            <li>10 m resolution</li>
+            <li>Multispectral analysis</li>
+          </ul>
+          <a
+            className="info-link"
+            href="https://sentinel.esa.int/web/sentinel/missions/sentinel-2"
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            Learn more <span aria-hidden>&rarr;</span>
+          </a>
         </div>
 
         <div className="boundary-card">
           <div className="boundary-head">
-            <Warning size={13} weight="duotone" />
-            <span>Product boundary</span>
+            <ShieldCheck size={13} weight="regular" />
+            <span>Not a lab replacement</span>
           </div>
           <p>
             Not a lab replacement. AquaSentinel surfaces optically observable
