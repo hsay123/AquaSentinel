@@ -216,36 +216,12 @@ export function MapPanel({
   const legendData = heat.state === 'ready' ? heat.data : null
 
   return (
-    <section className="panel map-panel">
-      {/* Head is positioned by CSS as the floating left control panel. */}
-      <div className="panel-head">
+    <section className="map-container">
+      {false && <div className="panel-head">
         <div className="panel-title">
           <span>{waterbody ? waterbody.name : 'Select a water body'}</span>
         </div>
-        <div className="map-controls">
-          <div className="seg">
-            {['ndti', 'ndci', 'fai'].map((k) => (
-              <button
-                key={k}
-                type="button"
-                className={index === k ? 'is-active' : ''}
-                onClick={() => setIndex(k)}
-                title={INDEX_META[k].label}
-              >
-                {INDEX_META[k].short}
-              </button>
-            ))}
-          </div>
-          <label className="map-toggle" title="Show or hide the index overlay">
-            <input
-              type="checkbox"
-              checked={showHeatmap}
-              onChange={(e) => setShowHeatmap(e.target.checked)}
-            />
-            Overlay
-          </label>
-        </div>
-      </div>
+      </div>}
 
       <div className="map-canvas">
         {!bounds ? (
@@ -297,6 +273,32 @@ export function MapPanel({
           </MapContainer>
         )}
 
+        {/* Map overlays — all absolutely positioned inside .map-canvas, whose
+            nearest positioned ancestor is .map-container. */}
+        <div className="map-top-controls">
+          <div className="seg">
+            {['ndti', 'ndci', 'fai'].map((k) => (
+              <button
+                key={k}
+                type="button"
+                className={index === k ? 'is-active' : ''}
+                onClick={() => setIndex(k)}
+                title={INDEX_META[k].label}
+              >
+                {INDEX_META[k].short}
+              </button>
+            ))}
+          </div>
+          <label className="map-toggle" title="Show or hide the index overlay">
+            <input
+              type="checkbox"
+              checked={showHeatmap}
+              onChange={(e) => setShowHeatmap(e.target.checked)}
+            />
+            Overlay
+          </label>
+        </div>
+
         {/* Date navigator: only real scene dates are offered. */}
         <div className="date-nav">
           <button
@@ -319,7 +321,7 @@ export function MapPanel({
         </div>
 
         {/* Legend lives ON the map, in a corner — not in a panel underneath. */}
-        <div className="map-legend-box">
+        <div className="map-legend-box map-legend">
           <div className="legend-title">
             {legendData ? (legendData.title ?? INDEX_META[index].label) : INDEX_META[index].label}
           </div>

@@ -1710,3 +1710,123 @@ body {
   color: var(--text-muted); font-size: 0.8rem;
   background: #05080c;
 }
+
+/* ==========================================================================
+   LAYOUT STRUCTURE — flex dashboard, map as a positioned container.
+   Fix: the map overlays (index toggle, legend, date nav, zoom, reset) are
+   absolutely positioned, so they must resolve against .map-container rather
+   than the page body. .map-canvas is deliberately NOT positioned, which makes
+   .map-container their nearest positioned ancestor.
+   ========================================================================== */
+.app {
+  display: flex;                 /* nav + content, full height */
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+.app > .sidebar {
+  position: static; inset: auto; z-index: auto; width: auto;
+  backdrop-filter: none; box-shadow: none;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-color);
+  border-radius: 0;
+}
+.main-content {
+  display: flex; flex-direction: column;
+  flex: 1; min-width: 0; min-height: 0; overflow: hidden;
+}
+/* KPI strip: full width, intrinsic height, never floats. */
+.topbar.kpi-strip-row {
+  position: static; inset: auto;
+  flex: 0 0 auto; height: 60px; min-height: 60px;
+  padding: 0 var(--space-4);
+  display: flex; align-items: center; gap: var(--space-4);
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-color);
+  backdrop-filter: none; box-shadow: none;
+}
+
+/* Main row: map dominant, detail column docked (not floating). */
+.main-row {
+  display: flex;
+  flex: 1; min-height: 0;
+  padding: var(--space-3) var(--space-4);
+  gap: var(--space-3);
+}
+
+/* The map container IS the positioning context for its overlays. */
+.map-container {
+  position: relative;           /* <- the anchoring context */
+  flex: 1 1 70%; min-width: 0;
+  min-height: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+/* .map-canvas must stay static so its absolute children anchor to .map-container. */
+.map-canvas {
+  position: static;
+  height: 100%;
+  min-height: 0;
+}
+.map-container .leaflet-container { width: 100%; height: 100%; background: #05080c; }
+
+/* Overlays: all positioned within the map box. */
+.map-top-controls {
+  position: absolute; top: 12px; right: 12px; z-index: 500;
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 6px;
+  background: rgba(7, 13, 23, 0.86);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  backdrop-filter: blur(8px);
+}
+.map-legend-box.map-legend {
+  position: absolute; bottom: 12px; left: 12px; z-index: 500;
+  background: rgba(7, 13, 23, 0.86);
+  border: 1px solid var(--border-color);
+  backdrop-filter: blur(8px);
+}
+.date-nav { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 500; }
+.map-reset { position: absolute; top: 12px; left: 12px; z-index: 500; }
+.map-zoom-controls { position: absolute; top: 12px; left: 52px; z-index: 500; }
+.leaflet-control-zoom { margin-top: 0 !important; margin-left: 0 !important; }
+/* Status line docks under the map, never overlays it. */
+.map-status {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  padding: 2px 10px; font-size: 0.58rem; color: var(--text-muted);
+  background: linear-gradient(transparent, rgba(7, 13, 23, 0.9));
+  pointer-events: none;
+}
+.map-loading { position: absolute; inset: 0; display: grid; place-items: center; }
+
+/* Detail panel: a real docked column. */
+.main-row > .detail-panel {
+  position: static; inset: auto; z-index: auto;
+  flex: 0 0 320px; min-width: 0;
+  max-height: none; overflow-y: auto;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: none; backdrop-filter: none;
+}
+
+/* Bottom row: three docked analysis panels, full width. */
+.bottom-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--space-3);
+  flex: 0 0 auto;
+  height: 208px;
+  padding: 0 var(--space-4) var(--space-3);
+}
+.bottom-row > .panel {
+  position: static; inset: auto; z-index: auto;
+  min-height: 0; max-height: none; overflow: hidden;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: none; backdrop-filter: none;
+}
+.hero { display: none; }
