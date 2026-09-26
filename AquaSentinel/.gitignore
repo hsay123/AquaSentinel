@@ -1,0 +1,67 @@
+# ---------------------------------------------------------------------------
+# Secrets — NEVER commit these
+# ---------------------------------------------------------------------------
+# `.env` at any level (backend/.env and frontend/.env were covered before, the
+# root one was not — that is the file `cp .env.example .env` creates).
+.env
+.env.*
+!.env.example
+
+# GEE service account keys and anything else someone drops in secrets/.
+secrets/
+*gee*key*.json
+*service*account*.json
+*-key.json
+credentials.json
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+
+# ---------------------------------------------------------------------------
+# Backend
+# ---------------------------------------------------------------------------
+backend/data/
+
+# ---------------------------------------------------------------------------
+# Frontend
+# ---------------------------------------------------------------------------
+frontend/node_modules/
+frontend/dist/
+
+# ---------------------------------------------------------------------------
+# Generated data (real observations are re-fetchable from GEE via
+# backend/scripts/precompute.py; the Parquet caches are build artifacts)
+# ---------------------------------------------------------------------------
+data/timeseries/
+data/baselines/
+data/evidence/
+data/cache/
+*.parquet
+*.pkl
+
+# ---------------------------------------------------------------------------
+# IDE
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ---------------------------------------------------------------------------
+# OS
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
