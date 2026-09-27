@@ -453,6 +453,9 @@ ul, ol { list-style: none; }
 }
 .map-rail-btn:hover { background: rgba(148, 163, 184, 0.12); color: var(--text-primary); }
 .map-rail-btn.is-active { background: var(--accent-gradient); color: #fff; }
+/* The layers button is a toggle for the index overlay only, so it reads as
+   "on" (tinted) rather than as a selected nav item (filled). */
+.map-rail-btn.is-on { color: var(--accent-cyan); background: rgba(56, 189, 248, 0.14); }
 .map-rail-letter { font-size: 0.72rem; font-weight: 700; font-family: var(--font-mono); }
 .map-rail-seg {
   display: flex; flex-direction: column; gap: 2px;

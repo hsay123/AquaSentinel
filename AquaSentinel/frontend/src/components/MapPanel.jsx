@@ -15,7 +15,7 @@
  * cells; nothing is positioned over the map from outside the card.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer, GeoJSON, ImageOverlay, Marker, Pane, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
@@ -32,15 +32,74 @@ const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
 const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 
-/** Fly to the AOI whenever the water body changes. */
-function FlyTo({ bounds }) {
+/** Module-level so the fit effect does not re-run on every render. */
+const FIT_PADDING = [24, 24]
+
+/**
+ * Make the rendered satellite raster the basemap.
+ *
+ * Three separate sizing bugs made the imagery read as "a photo patch on a road
+ * map" rather than a basemap:
+ *
+ *  1. Leaflet measured the map card before the grid had laid it out, so the fit
+ *     computed its zoom and centre against a stale container size and nothing
+ *     corrected it afterwards. A ResizeObserver now keeps the size honest for
+ *     the lifetime of the card, and every fit invalidates first.
+ *
+ *  2. The fit has to be the one that COVERS the viewport. `getBoundsZoom`'s
+ *     `inside` flag is counter-intuitive: `true` returns the zoom at which the
+ *     bounds FIT INSIDE the view, which means the raster is larger than the
+ *     viewport (what a basemap wants), while `false` returns the zoom at which
+ *     the bounds are LARGER than the view — i.e. the whole raster visible with
+ *     margins around it, which is precisely the floating-patch look. Measured:
+ *     `inside = false` left the composite at 291x277 inside a 922x412 viewport.
+ *
+ *  3. Even correctly fitted, zooming out one level would slide the vector
+ *     basemap back in around the edges. `minZoom` is pinned to the cover zoom
+ *     so the visible map is always imagery; the void beyond it is the honest
+ *     absence of a scene, not a road map pretending to be context.
+ */
+function FitToRaster({ bounds }) {
   const map = useMap()
-  useEffect(() => {
-    if (bounds && bounds.length === 4) {
-      const [w, s, e, n] = bounds
-      map.fitBounds([[s, w], [n, e]], { padding: [30, 30] })
-    }
+  const fitRef = useRef(null)
+
+  // One fit routine, shared by the effect and the first real resize. Fitting
+  // before Leaflet had measured the container produced an over-tight view — the
+  // composite at 2.7x the viewport, so a third of the scene was visible and
+  // 20 m/px imagery was magnified into mush.
+  const fit = useCallback(() => {
+    if (!bounds || bounds.length !== 4) return
+    const [w, s, e, n] = bounds
+    const lat = [[s, w], [n, e]]
+    map.invalidateSize({ animate: false })
+    map.fitBounds(lat, { padding: FIT_PADDING, animate: false })
+    // `inside = true` is the zoom at which the bounds FIT INSIDE the viewport:
+    // the whole acquisition visible at once, and also the loosest zoom allowed.
+    // Pinning minZoom here is what guarantees no view can ever expose ground the
+    // scene does not cover.
+    const wholeExtentZoom = map.getBoundsZoom(lat, true, FIT_PADDING)
+    if (wholeExtentZoom != null) map.setMinZoom(wholeExtentZoom)
   }, [map, bounds])
+
+  fitRef.current = fit
+
+  useEffect(() => { fit() }, [fit])
+
+  // The card is a grid cell: it changes size on window resize, on entering
+  // fullscreen, and when the responsive breakpoints rearrange the grid. The
+  // first callback re-fits as well, because layout settles after mount.
+  useEffect(() => {
+    const el = map.getContainer()
+    if (!el || typeof ResizeObserver === 'undefined') return undefined
+    let first = true
+    const ro = new ResizeObserver(() => {
+      if (first) { first = false; fitRef.current(); return }
+      map.invalidateSize({ animate: false })
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [map])
+
   return null
 }
 
@@ -251,8 +310,10 @@ export function MapPanel({
     () => aoiBounds(waterbody?.aoi_geojson),
     [waterbody?.aoi_geojson],
   )
-  const baseCorners = toCorners(base.data?.bounds)
-  const heatCorners = toCorners(heat.data?.bounds)
+  // Memoised: a fresh array here re-runs the fit effect on every render, which
+  // re-fits the view mid-gesture and makes the map impossible to pan.
+  const baseCorners = useMemo(() => toCorners(base.data?.bounds), [base.data])
+  const heatCorners = useMemo(() => toCorners(heat.data?.bounds), [heat.data])
   const heatReady = showHeatmap && heat.state === 'ready' && heatCorners
 
   const legendData = heat.state === 'ready' ? heat.data : null
@@ -285,12 +346,18 @@ export function MapPanel({
             zoomControl={false}
             attributionControl={false}
           >
-            {/* Fallback context, beneath the real imagery. */}
-            <Pane name="osm" style={{ zIndex: 190 }}>
-              <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} maxZoom={19} />
-            </Pane>
+            {/* Street tiles are a FALLBACK, not the basemap — and only once the
+                request has actually FAILED. While the composite is merely
+                pending the map stays empty: flashing a road map during a cold
+                render is exactly the mixed aesthetic this layer stack exists to
+                remove. */}
+            {base.state === 'unavailable' && (
+              <Pane name="osm" style={{ zIndex: 190 }}>
+                <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} maxZoom={19} />
+              </Pane>
+            )}
 
-            {/* Real Sentinel-2 true-colour composite = the base layer. */}
+            {/* Real Sentinel-2 true-colour composite = the basemap. */}
             <Pane name="satellite" style={{ zIndex: 210 }}>
               {base.state === 'ready' && baseCorners && (
                 <ImageOverlay url={base.data.image_url} bounds={baseCorners} opacity={1} />
@@ -312,8 +379,11 @@ export function MapPanel({
               )}
             </Pane>
 
-            <FlyTo bounds={bounds} />
-            <FitRequest bounds={bounds} request={refit} />
+            {/* The basemap extent is the RENDERED RASTER's bounds, not the AOI's:
+                the raster is the imagery, so the view is locked to what actually
+                exists. `key` re-runs the fit whenever the scene changes. */}
+            <FitToRaster key={`${waterbody?.id}-${sceneDate}`} bounds={baseCorners ?? bounds} />
+            <FitRequest bounds={baseCorners ?? bounds} request={refit} />
             <ScaleBar />
             {activeZone && (
               <ZonePin zone={activeZone} label={zoneShort(activeZone.id, zoneLabels)} />
@@ -360,8 +430,10 @@ export function MapPanel({
         <div className="map-rail">
           <button
             type="button"
-            className="map-rail-btn"
-            title={showHeatmap ? 'Hide the index heatmap' : 'Show the index heatmap'}
+            className={`map-rail-btn ${showHeatmap ? 'is-on' : ''}`}
+            title={showHeatmap
+              ? 'Hide the index overlay (the satellite base stays)'
+              : 'Show the index overlay'}
             onClick={() => setShowHeatmap((v) => !v)}
             aria-pressed={showHeatmap}
           >
@@ -400,12 +472,14 @@ export function MapPanel({
         {/* Legend for the selected indicator, floating bottom-left. */}
         <div className="map-legend-card">
           <div className="map-legend-title">
-            {legendData ? (legendData.title ?? INDEX_META[index].label) : INDEX_META[index].label}
+            {showHeatmap
+              ? (legendData ? (legendData.title ?? INDEX_META[index].label) : INDEX_META[index].label)
+              : `${INDEX_META[index].label} — overlay off`}
           </div>
 
-          {heat.state === 'loading' && <Skeleton lines={1} height={7} />}
+          {showHeatmap && heat.state === 'loading' && <Skeleton lines={1} height={7} />}
 
-          {legendData && (
+          {showHeatmap && legendData && (
             <>
               <div
                 className="legend-bar"
@@ -418,18 +492,27 @@ export function MapPanel({
             </>
           )}
 
-          {heat.state === 'unavailable' && (
+          {showHeatmap && heat.state === 'unavailable' && (
             <div className="legend-note">
               No {INDEX_META[index].short} overlay for this date —{' '}
               {heat.error?.message ?? 'no usable water pixels after cloud and water masking.'}
             </div>
           )}
 
+          {base.state === 'unavailable' && (
+            <div className="legend-note">
+              No satellite imagery for {date ? fmtDate(date) : 'this date'} — showing
+              street tiles as a fallback. Only valid pixels are ever drawn, so a
+              gap here means the scene has no usable data here, not a failed
+              request.
+            </div>
+          )}
+
           <div className="legend-foot">
             {base.state === 'ready'
-              ? 'Base: real Sentinel-2 true colour'
+              ? 'Base: real Sentinel-2 true colour (B4/B3/B2)'
               : base.state === 'loading'
-                ? 'Base: loading composite…'
+                ? 'Base: fetching real composite…'
                 : 'Base: street tiles (composite unavailable)'}
           </div>
         </div>
@@ -457,9 +540,14 @@ export function MapPanel({
           {zonesError ? <ErrorNote error={zonesError} /> : null}
         </div>
         <div className="map-foot-right mono">
-          {heatReady && heat.data?.scene_id
-            ? `heatmap ${INDEX_META[index].short} · ${String(heat.data.scene_id).split('/').pop()?.slice(0, 22)}`
-            : 'no index overlay'}
+          {base.state === 'ready' && base.data?.scene_id
+            ? `S2 ${String(base.data.scene_id).split('/').pop()?.slice(0, 22)}`
+            : null}
+          {showHeatmap
+            ? (heatReady && heat.data?.scene_id
+              ? ` + ${INDEX_META[index].short} overlay`
+              : ' + no index overlay')
+            : ' + overlay off'}
         </div>
       </div>
     </div>

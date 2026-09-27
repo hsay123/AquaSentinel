@@ -233,6 +233,18 @@ def true_color_raster(
     /true-color returns a decorated matplotlib figure (axes + title) for
     evidence use, which misaligns when positioned at the AOI bounds. This is
     exactly the data grid, so it sits correctly under the thematic overlay.
+
+    NOTE ON EXTENT — this deliberately has no "widen the bbox" parameter.
+    Sentinel-2 acquisitions are MGRS-tile bounded: a scene only covers its own
+    tile (the Yamuna AOI sits inside T43RGM), so a rectangle wider than the AOI
+    runs off the end of that scene's footprint. Measured, not assumed: asking
+    for 1.6x the AOI resolved to a DIFFERENT acquisition (2023-10-09 instead of
+    the requested 2023-10-26) and then failed with "no valid B4 pixels", because
+    resolve_scene filters candidates by bounds and cloud cover. A padding
+    parameter would have quietly changed which date the map claims to show.
+
+    The map instead treats this raster's own bounds as the basemap extent and
+    locks the viewport to them, rather than asking for ground the scene lacks.
     """
     from backend.pipeline.render import render_true_color_raster, resolve_scene
 
