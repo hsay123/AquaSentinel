@@ -129,6 +129,17 @@ app.mount(
     StaticFiles(directory=os.path.join(DATA_ROOT, "renders")),
     name="render-assets",
 )
+# Pre-warmed composites, grouped per (water body, date) by
+# backend/scripts/prewarm_composites.py. A separate mount rather than another
+# file in /render-assets, because these keep their directory structure
+# (<water_body_id>/<date>/true_color.png) and a flat static mount cannot resolve
+# a bare "true_color.png" that exists once per date.
+os.makedirs(os.path.join(DATA_ROOT, "composites"), exist_ok=True)
+app.mount(
+    "/composite-assets",
+    StaticFiles(directory=os.path.join(DATA_ROOT, "composites")),
+    name="composite-assets",
+)
 # Alert evidence PNGs: real index maps, true-colour before/after pairs and
 # time-series charts for the flagged event.
 app.mount(

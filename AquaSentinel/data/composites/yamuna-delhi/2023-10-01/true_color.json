@@ -1,0 +1,19 @@
+{
+  "path": "/home/yashh/Documents/AquaSentinell/AquaSentinel/data/composites/yamuna-delhi/2023-10-01/yamuna-delhi_truecolor_2023-10-01_raster.png",
+  "kind": "true-color-raster",
+  "date": "2023-10-01",
+  "requested_date": "2023-10-01",
+  "scene_id": "COPERNICUS/S2_SR_HARMONIZED/20231001T052649_20231001T053125_T43RGM",
+  "bounds": [
+    28.543982720866495,
+    77.28517745131737,
+    28.58579622850846,
+    77.33515885692104
+  ],
+  "width": 249,
+  "height": 227,
+  "scale_m": 20,
+  "stretch_low": 0.017400000000000002,
+  "stretch_high": 0.22340000000000002,
+  "title": "True colour \u2014 Sentinel-2 L2A"
+}

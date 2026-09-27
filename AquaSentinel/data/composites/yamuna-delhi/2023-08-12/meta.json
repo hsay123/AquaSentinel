@@ -1,0 +1,65 @@
+{
+  "waterbody_id": "yamuna-delhi",
+  "date": "2023-08-12",
+  "requested_date": "2023-08-12",
+  "scene_id": "COPERNICUS/S2_SR_HARMONIZED/20230812T052649_20230812T053656_T43RGM",
+  "bounds": [
+    28.543982720866495,
+    77.28517745131737,
+    28.58579622850846,
+    77.33515885692104
+  ],
+  "width": 249,
+  "height": 227,
+  "scale_m": 20,
+  "layers": {
+    "true_color": {
+      "file": "true_color.png",
+      "bounds": [
+        28.543982720866495,
+        77.28517745131737,
+        28.58579622850846,
+        77.33515885692104
+      ],
+      "scene_id": "COPERNICUS/S2_SR_HARMONIZED/20230812T052649_20230812T053656_T43RGM"
+    },
+    "index_ndti": {
+      "file": "index_ndti.png",
+      "bounds": [
+        28.543982720866495,
+        77.28517745131737,
+        28.58579622850846,
+        77.33515885692104
+      ],
+      "vmin": -0.38105630728939327,
+      "vmax": 0.4043659043659043,
+      "colormap": null
+    },
+    "index_ndci": {
+      "file": "index_ndci.png",
+      "bounds": [
+        28.543982720866495,
+        77.28517745131737,
+        28.58579622850846,
+        77.33515885692104
+      ],
+      "vmin": -0.15583259127337487,
+      "vmax": 0.4544253632760898,
+      "colormap": null
+    },
+    "index_fai": {
+      "file": "index_fai.png",
+      "bounds": [
+        28.543982720866495,
+        77.28517745131737,
+        28.58579622850846,
+        77.33515885692104
+      ],
+      "vmin": -0.17933365079365077,
+      "vmax": 0.38297492063492067,
+      "colormap": null
+    }
+  },
+  "incomplete": [],
+  "bounds_source": "pipeline.render metadata (GEE sampling grid), copied verbatim"
+}

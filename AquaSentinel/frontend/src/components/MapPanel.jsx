@@ -33,52 +33,39 @@ const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 
 /** Module-level so the fit effect does not re-run on every render. */
-const FIT_PADDING = [24, 24]
+const FIT_PADDING = [28, 28]
 
 /**
- * Make the rendered satellite raster the basemap.
+ * Frame the water body's AOI — the GeoVisionAI `BoundsFitter` pattern.
  *
- * Three separate sizing bugs made the imagery read as "a photo patch on a road
- * map" rather than a basemap:
+ * The composite is a BOUNDED image overlay, not a basemap: a pre-rendered PNG
+ * for one Sentinel-2 acquisition, positioned at the exact bounds recovered from
+ * the GEE sampling grid and clipped to those bounds. Context outside the AOI is
+ * the vector basemap, which is legitimate and is what the reference
+ * implementation does (its MapView keeps a TileLayer mounted at all times and
+ * lays the analysis ImageOverlay on top of it).
  *
- *  1. Leaflet measured the map card before the grid had laid it out, so the fit
- *     computed its zoom and centre against a stale container size and nothing
- *     corrected it afterwards. A ResizeObserver now keeps the size honest for
- *     the lifetime of the card, and every fit invalidates first.
+ * Bounds are never hand-typed here. They arrive from the raster's own metadata
+ * (`bounds` in the cached render's meta.json), which the pipeline computes from
+ * the pixel coordinates GEE actually returned. Measured against the AOI
+ * polygons: worst edge delta 46-113 m on a ~5 km AOI, which is the expected
+ * snap of a 20 m sampling grid to whole pixels, and the base and index rasters
+ * for a given date share bit-identical bounds and grid, so they are exactly
+ * co-registered.
  *
- *  2. The fit has to be the one that COVERS the viewport. `getBoundsZoom`'s
- *     `inside` flag is counter-intuitive: `true` returns the zoom at which the
- *     bounds FIT INSIDE the view, which means the raster is larger than the
- *     viewport (what a basemap wants), while `false` returns the zoom at which
- *     the bounds are LARGER than the view — i.e. the whole raster visible with
- *     margins around it, which is precisely the floating-patch look. Measured:
- *     `inside = false` left the composite at 291x277 inside a 922x412 viewport.
- *
- *  3. Even correctly fitted, zooming out one level would slide the vector
- *     basemap back in around the edges. `minZoom` is pinned to the cover zoom
- *     so the visible map is always imagery; the void beyond it is the honest
- *     absence of a scene, not a road map pretending to be context.
+ * `invalidateSize` is called on every fit AND from a ResizeObserver: the map
+ * card is a grid cell, so Leaflet initially measures it before layout settles
+ * and the first fit would otherwise be computed against a stale container size.
  */
 function FitToRaster({ bounds }) {
   const map = useMap()
   const fitRef = useRef(null)
 
-  // One fit routine, shared by the effect and the first real resize. Fitting
-  // before Leaflet had measured the container produced an over-tight view — the
-  // composite at 2.7x the viewport, so a third of the scene was visible and
-  // 20 m/px imagery was magnified into mush.
   const fit = useCallback(() => {
     if (!bounds || bounds.length !== 4) return
     const [w, s, e, n] = bounds
-    const lat = [[s, w], [n, e]]
-    map.invalidateSize({ animate: false })
-    map.fitBounds(lat, { padding: FIT_PADDING, animate: false })
-    // `inside = true` is the zoom at which the bounds FIT INSIDE the viewport:
-    // the whole acquisition visible at once, and also the loosest zoom allowed.
-    // Pinning minZoom here is what guarantees no view can ever expose ground the
-    // scene does not cover.
-    const wholeExtentZoom = map.getBoundsZoom(lat, true, FIT_PADDING)
-    if (wholeExtentZoom != null) map.setMinZoom(wholeExtentZoom)
+    map.fitBounds([[s, w], [n, e]], { padding: FIT_PADDING, animate: false })
+    map.invalidateSize()
   }, [map, bounds])
 
   fitRef.current = fit
@@ -346,16 +333,16 @@ export function MapPanel({
             zoomControl={false}
             attributionControl={false}
           >
-            {/* Street tiles are a FALLBACK, not the basemap — and only once the
-                request has actually FAILED. While the composite is merely
-                pending the map stays empty: flashing a road map during a cold
-                render is exactly the mixed aesthetic this layer stack exists to
-                remove. */}
-            {base.state === 'unavailable' && (
-              <Pane name="osm" style={{ zIndex: 190 }}>
-                <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} maxZoom={19} />
-              </Pane>
-            )}
+            {/*
+              Context basemap, always mounted — the GeoVisionAI MapView pattern.
+              The composite is a bounded overlay ON TOP of this, not a
+              replacement for it: one Sentinel-2 acquisition covers one MGRS
+              tile, so ground outside the AOI legitimately has no imagery and
+              the basemap is the honest thing to show there.
+            */}
+            <Pane name="osm" style={{ zIndex: 190 }}>
+              <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} maxZoom={19} />
+            </Pane>
 
             {/* Real Sentinel-2 true-colour composite = the basemap. */}
             <Pane name="satellite" style={{ zIndex: 210 }}>
@@ -501,21 +488,34 @@ export function MapPanel({
 
           {base.state === 'unavailable' && (
             <div className="legend-note">
-              No satellite imagery for {date ? fmtDate(date) : 'this date'} — showing
-              street tiles as a fallback. Only valid pixels are ever drawn, so a
-              gap here means the scene has no usable data here, not a failed
-              request.
+              No cached imagery for {date ? fmtDate(date) : 'this date'} — showing the
+              context basemap instead. Nothing stale is drawn: a cache miss leaves
+              the AOI uncovered rather than substituting another date's image.
             </div>
           )}
 
           <div className="legend-foot">
             {base.state === 'ready'
-              ? 'Base: real Sentinel-2 true colour (B4/B3/B2)'
+              ? `AOI: Sentinel-2 true colour · ${fmtDate(base.data?.date)}`
               : base.state === 'loading'
-                ? 'Base: fetching real composite…'
-                : 'Base: street tiles (composite unavailable)'}
+                ? 'AOI: fetching composite…'
+                : 'AOI: no cached composite'}
           </div>
         </div>
+
+        {/* Explicit cache-miss state. A miss must never leave a previous date's
+            image sitting over the new date's extent, so this is a first-class
+            state rather than a silent blank. */}
+        {base.state === 'unavailable' && (
+          <div className="map-nostate" role="status">
+            <span className="map-nostate-title">
+              No cached imagery for {date ? fmtDate(date) : 'this date'}
+            </span>
+            <span className="map-nostate-note">
+              {base.error?.message ?? 'The renderer has no Sentinel-2 acquisition cached for this AOI on this date.'}
+            </span>
+          </div>
+        )}
 
         {/* Fullscreen: the map owns the viewport while it is active. */}
         <button

@@ -482,6 +482,21 @@ ul, ol { list-style: none; }
 .legend-note { color: var(--sev-medium); }
 .legend-foot { padding-top: 5px; border-top: 1px solid var(--border); }
 
+/* --- map chrome: explicit cache-miss state --- */
+.map-nostate {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  z-index: 700; max-width: 340px;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 14px 18px; text-align: center;
+  background: var(--chrome-bg);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-pop);
+}
+.map-nostate-title { font-size: 0.76rem; font-weight: 600; color: var(--sev-medium); }
+.map-nostate-note { font-size: 0.64rem; color: var(--text-secondary); line-height: 1.5; }
+
 /* --- map chrome: scale bar + expand, bottom right --- */
 .map-scale {
   position: absolute; right: 56px; bottom: 16px; z-index: 700;

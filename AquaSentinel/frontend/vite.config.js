@@ -12,10 +12,11 @@ import react from '@vitejs/plugin-react'
 // machine talks to the backend the same way the dev server does.
 const BACKEND = process.env.VITE_BACKEND_ORIGIN || 'http://localhost:8000'
 
-// The backend serves the real Sentinel-2 composites under /render-assets and the
-// per-alert evidence pair under /evidence-assets. They must be proxied too: the
-// SPA fallback answers any unknown path with index.html and a 200, so an
-// unproxied <img> fails to decode silently and the map quietly falls back to
+// The backend serves the real Sentinel-2 composites under /render-assets, the
+// per-alert evidence pair under /evidence-assets, and the pre-warmed grouped
+// composites under /composite-assets. They must be proxied too: the SPA
+// fallback answers any unknown path with index.html and a 200, so an unproxied
+// <img> fails to decode silently and the map quietly falls back to
 // street tiles while the legend still claims "real Sentinel-2 true colour".
 const proxy = {
   '/api': {
@@ -25,6 +26,8 @@ const proxy = {
   },
   '/render-assets': { target: BACKEND, changeOrigin: true },
   '/evidence-assets': { target: BACKEND, changeOrigin: true },
+  // Pre-warmed composites, grouped per (water body, date).
+  '/composite-assets': { target: BACKEND, changeOrigin: true },
 }
 
 export default defineConfig({

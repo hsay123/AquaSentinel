@@ -32,6 +32,11 @@ logger = logging.getLogger("aquasentinel.renders")
 router = APIRouter(prefix="/renders", tags=["renders"])
 
 RENDER_DIR = Path(DATA_ROOT) / "renders"
+#: Grouped per-(water body, date) cache written by
+#: ``backend/scripts/prewarm_composites.py``. One directory per acquisition holds
+#: every layer for that date plus a meta.json, so "is this date fully cached?" is
+#: a single directory listing rather than four glob guesses.
+COMPOSITE_DIR = Path(DATA_ROOT) / "composites"
 
 
 def _cached(stem: str) -> Optional[dict]:
@@ -66,6 +71,43 @@ def _serve(meta: dict) -> dict:
         "stretch_low": meta.get("stretch_low"),
         "stretch_high": meta.get("stretch_high"),
         "cached": True,
+    }
+
+
+def _composite_layer(waterbody_id: str, date: str, filename: str) -> Optional[dict]:
+    """Serve a pre-warmed layer from the grouped composite cache.
+
+    Returns the same shape as ``_serve`` so the client cannot tell whether a
+    layer came from the pre-warm or was rendered on demand. The bounds are read
+    from the cached meta.json — the map never derives an extent itself.
+    """
+    meta_path = COMPOSITE_DIR / waterbody_id / date / "meta.json"
+    try:
+        meta = json.loads(meta_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    layer = (meta.get("layers") or {}).get(filename.removesuffix(".png"))
+    if not layer:
+        return None
+    png = meta_path.parent / layer["file"]
+    if not png.exists():
+        return None
+    return {
+        # The grouped cache keeps <water_body_id>/<date>/ in the path, so this
+        # uses the /composite-assets mount rather than the flat /render-assets
+        # one — "true_color.png" alone exists once per date and is ambiguous.
+        "image_url": f"/composite-assets/{waterbody_id}/{date}/{layer['file']}",
+        "date": meta.get("date", date),
+        "requested_date": meta.get("requested_date", date),
+        "scene_id": meta.get("scene_id"),
+        "bounds": layer.get("bounds") or meta.get("bounds"),
+        "width": meta.get("width"),
+        "height": meta.get("height"),
+        "scale_m": meta.get("scale_m"),
+        "vmin": layer.get("vmin"),
+        "vmax": layer.get("vmax"),
+        "colormap": layer.get("colormap"),
+        "source": "prewarm",
     }
 
 
@@ -179,6 +221,12 @@ def overlay(
         )
     _, actual_date = resolved
 
+    # Pre-warmed composite first: no Earth Engine round trip at all.
+    warmed = _composite_layer(waterbody_id, actual_date, f"index_{index}.png")
+    if warmed is not None:
+        warmed.update({"index": index, "alpha": "off-water = 0"})
+        return warmed
+
     cached = _cached(f"{waterbody_id}_{index}_{actual_date}_overlay")
     if cached is not None:
         out = _serve(cached)
@@ -256,6 +304,11 @@ def true_color_raster(
             detail=f"No Sentinel-2 acquisition near {date} for {waterbody_id}.",
         )
     _, actual_date = resolved
+
+    # Pre-warmed composite first: no Earth Engine round trip at all.
+    warmed = _composite_layer(waterbody_id, actual_date, "true_color.png")
+    if warmed is not None:
+        return warmed
 
     cached = _cached(f"{waterbody_id}_truecolor_{actual_date}_raster")
     if cached is not None:

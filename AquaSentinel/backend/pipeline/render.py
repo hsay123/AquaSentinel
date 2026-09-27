@@ -166,6 +166,24 @@ def resolve_scene(aoi_geojson: dict, date_iso: str, window_days: int = 20) -> Op
     return (best[1], best[2]) if best else None
 
 
+def _write_meta(path: Path, meta: dict) -> None:
+    """Write a render's metadata JSON atomically.
+
+    Ported from GeoVisionAI's ``backend/cache.py`` ``save_cached``: write to a
+    sibling ``.tmp`` and ``replace`` it into position, so a reader never sees a
+    half-written file. These renders are produced concurrently by the map, the
+    detail card and the before/after panel, and a bare ``write_text`` that is
+    interrupted (or raced by a second writer) leaves corrupt JSON next to a
+    perfectly good PNG. ``routers/renders._cached`` does recover from that by
+    re-rendering, so the old behaviour was self-healing but threw away a valid
+    image and paid for another Earth Engine round trip.
+    """
+    target = path.with_suffix(".json")
+    tmp = target.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(meta))
+    tmp.replace(target)
+
+
 def _aoi_bbox(aoi_geojson: dict) -> tuple[float, float, float, float]:
     """(min_lon, min_lat, max_lon, max_lat) of an AOI, computed locally.
 
@@ -503,7 +521,7 @@ def render_true_color_raster(
         "stretch_high": float(hi),
         "title": "True colour — Sentinel-2 L2A",
     }
-    path.with_suffix(".json").write_text(json.dumps(meta))
+    _write_meta(path, meta)
     return meta
 
 
@@ -607,7 +625,7 @@ def render_index_overlay(
         "title": index_title(index),
         "description": index_description(index),
     }
-    path.with_suffix(".json").write_text(json.dumps(meta))
+    _write_meta(path, meta)
     return meta
 
 
@@ -696,7 +714,7 @@ def render_index_map(
         "title": index_title(index),
         "description": index_description(index),
     }
-    path.with_suffix(".json").write_text(json.dumps(meta))
+    _write_meta(path, meta)
     return meta
 
 
@@ -771,7 +789,7 @@ def render_true_color(
         "stretch_high": float(hi),
         "title": "True colour — Sentinel-2 L2A",
     }
-    path.with_suffix(".json").write_text(json.dumps(meta))
+    _write_meta(path, meta)
     return meta
 
 
