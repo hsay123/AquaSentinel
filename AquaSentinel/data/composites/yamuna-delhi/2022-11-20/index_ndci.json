@@ -1,0 +1,25 @@
+{
+  "path": "/home/yashh/Documents/AquaSentinell/AquaSentinel/data/composites/yamuna-delhi/2022-11-20/yamuna-delhi_ndci_2022-11-20_overlay.png",
+  "kind": "overlay",
+  "index": "ndci",
+  "date": "2022-11-20",
+  "requested_date": "2022-11-20",
+  "scene_id": "COPERNICUS/S2_SR_HARMONIZED/20221120T053121_20221120T053115_T43RGM",
+  "bounds": [
+    28.543982720866495,
+    77.28517745131737,
+    28.58579622850846,
+    77.33515885692104
+  ],
+  "width": 249,
+  "height": 227,
+  "scale_m": 20,
+  "vmin": -0.1405653170359053,
+  "vmax": 0.3853557923685115,
+  "otsu_threshold": -0.2944399118423462,
+  "water_mask": "per-scene Otsu on MNDWI; off-water pixels are alpha 0",
+  "water_pixels": 23970,
+  "total_pixels": 56523,
+  "title": "NDCI \u2014 Chlorophyll-a proxy",
+  "description": "Normalised Difference Chlorophyll Index. Higher = more chlorophyll-a, consistent with algal biomass."
+}

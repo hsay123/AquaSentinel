@@ -9,7 +9,27 @@
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api'
 
-async function request(path, { signal, timeoutMs = 60_000 } = {}) {
+/**
+ * Per-endpoint deadlines. Every request terminates: success, error, no-data or
+ * TIMEOUT. A timeout is a distinct outcome rather than being folded into
+ * "error", because the two call for different responses (retry vs. fix the
+ * backend) and only one of them is actionable by the user.
+ *
+ * Renders get the longest budget because a genuine cold Earth Engine render
+ * really does take 10-35 s. Everything the map needs on a warm cache now
+ * answers in milliseconds, since the render endpoints consult the composite
+ * cache BEFORE calling resolve_scene().
+ */
+const DEFAULT_TIMEOUT_MS = 30_000
+const RENDER_TIMEOUT_MS = 45_000
+
+function timeoutError(ms) {
+  const err = new Error(`Request timed out after ${Math.round(ms / 1000)}s`)
+  err.timedOut = true
+  return err
+}
+
+async function request(path, { signal, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   if (signal) signal.addEventListener('abort', () => ctrl.abort(), { once: true })
@@ -34,6 +54,11 @@ async function request(path, { signal, timeoutMs = 60_000 } = {}) {
       throw err
     }
     return body
+  } catch (e) {
+    // An abort is a timeout only when OUR deadline fired: a caller-supplied
+    // abort is a deliberate cancellation and must not masquerade as one.
+    if (e?.name === 'AbortError' && !signal?.aborted) throw timeoutError(timeoutMs)
+    throw e
   } finally {
     clearTimeout(timer)
   }
@@ -102,7 +127,7 @@ export const getIndexOverlay = (waterbodyId, index, date, opts) =>
   request(
     `/renders/overlay?waterbody_id=${encodeURIComponent(waterbodyId)}` +
     `&index=${encodeURIComponent(index)}&date=${encodeURIComponent(date)}`,
-    { timeoutMs: 180_000, ...opts },
+    { timeoutMs: RENDER_TIMEOUT_MS, ...opts },
   )
 
 /** Clean, georeferenced true-colour raster for the map base layer. */
@@ -110,7 +135,7 @@ export const getTrueColorRaster = (waterbodyId, date, opts) =>
   request(
     `/renders/true-color-raster?waterbody_id=${encodeURIComponent(waterbodyId)}` +
     `&date=${encodeURIComponent(date)}`,
-    { timeoutMs: 180_000, ...opts },
+    { timeoutMs: RENDER_TIMEOUT_MS, ...opts },
   )
 
 /** Real rendered true-colour composite (decorated figure; evidence use). */

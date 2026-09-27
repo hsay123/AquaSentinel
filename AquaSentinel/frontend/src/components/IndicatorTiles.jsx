@@ -24,7 +24,7 @@
  * so the cards always describe the zone the map is highlighting.
  */
 
-import { CaretDown, TrendDown, TrendUp } from '@phosphor-icons/react'
+import { CaretDown, GridFour, TrendDown, TrendUp, WarningCircle } from '@phosphor-icons/react'
 import {
   INDEX_META, deltaTone, fmtNum, fmtSignedPct, severityFromZ, zScore,
 } from '../lib/format.js'
@@ -135,6 +135,7 @@ function Card({ meta, point, points, error, loading, isActive, onSelect, alert }
 
 export function IndicatorTiles({
   latestByIndex, pointsByIndex, errors, loading,
+  zoneGate = 'ready', zoneError,
   activeIndex, onSelectIndex, alert, zoneId, zoneLabels, onZoneChange,
 }) {
   return (
@@ -148,8 +149,11 @@ export function IndicatorTiles({
               value={zoneId ?? ''}
               onChange={(e) => onZoneChange(e.target.value)}
               aria-label="Zone context for the indicator cards"
+              disabled={zoneGate !== 'ready'}
             >
-              {!zoneId && <option value="">No zone selected</option>}
+              {!zoneId && (
+                <option value="">{zoneGate === 'error' ? 'Unavailable' : 'No zone'}</option>
+              )}
               {zoneId && <option value={zoneId}>{zoneName(zoneId, zoneLabels)}</option>}
             </select>
             <CaretDown size={11} weight="bold" aria-hidden />
@@ -157,21 +161,49 @@ export function IndicatorTiles({
         </div>
       </div>
 
-      <div className="ind-grid">
-        {CARDS.map((c) => (
-          <Card
-            key={c.key}
-            meta={c}
-            point={latestByIndex?.[c.key] ?? null}
-            points={pointsByIndex?.[c.key] ?? null}
-            error={errors?.[c.key]}
-            loading={loading}
-            alert={alert}
-            isActive={activeIndex === c.key}
-            onSelect={onSelectIndex}
-          />
-        ))}
-      </div>
+      {/* Terminal states. A skeleton is only ever shown for `loading`; the other
+          three outcomes are real, reachable states carrying real copy. */}
+      {zoneGate === 'error' && (
+        <div className="panel-state">
+          <WarningCircle size={20} weight="duotone" className="panel-state-icon" />
+          <div className="panel-state-title">Zone geometry unavailable</div>
+          <div className="panel-state-note">
+            {zoneError?.timedOut
+              ? 'The zone request timed out.'
+              : zoneError?.message ?? 'No cached zone geometry for this water body.'}
+          </div>
+          <div className="panel-state-src mono">GET /waterbodies/&#123;id&#125;/zones</div>
+        </div>
+      )}
+
+      {zoneGate === 'no-zone' && (
+        <div className="panel-state">
+          <GridFour size={20} weight="duotone" className="panel-state-icon" />
+          <div className="panel-state-title">No zones for this water body</div>
+          <div className="panel-state-note">
+            Indicators are measured per zone, so there is nothing to read until the
+            zone grid is precomputed for this AOI.
+          </div>
+        </div>
+      )}
+
+      {zoneGate !== 'error' && zoneGate !== 'no-zone' && (
+        <div className="ind-grid">
+          {CARDS.map((c) => (
+            <Card
+              key={c.key}
+              meta={c}
+              point={latestByIndex?.[c.key] ?? null}
+              points={pointsByIndex?.[c.key] ?? null}
+              error={errors?.[c.key]}
+              loading={loading}
+              alert={alert}
+              isActive={activeIndex === c.key}
+              onSelect={onSelectIndex}
+            />
+          ))}
+        </div>
+      )}
     </section>
   )
 }

@@ -1,0 +1,25 @@
+{
+  "path": "/home/yashh/Documents/AquaSentinell/AquaSentinel/data/composites/yamuna-delhi/2023-03-30/yamuna-delhi_fai_2023-03-30_overlay.png",
+  "kind": "overlay",
+  "index": "fai",
+  "date": "2023-03-30",
+  "requested_date": "2023-03-30",
+  "scene_id": "COPERNICUS/S2_SR_HARMONIZED/20230330T052641_20230330T053115_T43RGM",
+  "bounds": [
+    28.543982720866495,
+    77.28517745131737,
+    28.58579622850846,
+    77.33515885692104
+  ],
+  "width": 249,
+  "height": 227,
+  "scale_m": 20,
+  "vmin": -0.13105714285714287,
+  "vmax": 0.5018257142857143,
+  "otsu_threshold": -0.39776474237442017,
+  "water_mask": "per-scene Otsu on MNDWI; off-water pixels are alpha 0",
+  "water_pixels": 25797,
+  "total_pixels": 56523,
+  "title": "FAI \u2014 Floating algae index",
+  "description": "Floating Algae Index. Higher = more floating vegetation or surface scum."
+}

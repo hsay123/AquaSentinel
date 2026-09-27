@@ -1,0 +1,33 @@
+{
+  "waterbody_id": "yamuna-delhi",
+  "date": "2022-09-06",
+  "requested_date": "2022-09-06",
+  "scene_id": "COPERNICUS/S2_SR_HARMONIZED/20220906T052649_20220906T053128_T43RGM",
+  "bounds": [
+    28.544163101915437,
+    77.28517745131737,
+    28.58579622850846,
+    77.33516283740995
+  ],
+  "width": 249,
+  "height": 226,
+  "scale_m": 20,
+  "layers": {
+    "true_color": {
+      "file": "true_color.png",
+      "bounds": [
+        28.544163101915437,
+        77.28517745131737,
+        28.58579622850846,
+        77.33516283740995
+      ],
+      "scene_id": "COPERNICUS/S2_SR_HARMONIZED/20220906T052649_20220906T053128_T43RGM"
+    }
+  },
+  "incomplete": [
+    "fai",
+    "ndci",
+    "ndti"
+  ],
+  "bounds_source": "pipeline.render metadata (GEE sampling grid), copied verbatim"
+}

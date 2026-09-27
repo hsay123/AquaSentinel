@@ -1,0 +1,25 @@
+{
+  "path": "/home/yashh/Documents/AquaSentinell/AquaSentinel/data/composites/hussain-sagar/2023-03-14/hussain-sagar_ndci_2023-03-14_overlay.png",
+  "kind": "overlay",
+  "index": "ndci",
+  "date": "2023-03-14",
+  "requested_date": "2023-03-14",
+  "scene_id": "COPERNICUS/S2_SR_HARMONIZED/20230314T050651_20230314T051815_T43QHV",
+  "bounds": [
+    17.414975009552865,
+    78.46472970431904,
+    17.444989286540334,
+    78.5054112603798
+  ],
+  "width": 214,
+  "height": 169,
+  "scale_m": 20,
+  "vmin": -0.11933777879972407,
+  "vmax": 0.4237947122861587,
+  "otsu_threshold": -0.47328609228134155,
+  "water_mask": "per-scene Otsu on MNDWI; off-water pixels are alpha 0",
+  "water_pixels": 14940,
+  "total_pixels": 36166,
+  "title": "NDCI \u2014 Chlorophyll-a proxy",
+  "description": "Normalised Difference Chlorophyll Index. Higher = more chlorophyll-a, consistent with algal biomass."
+}

@@ -213,6 +213,14 @@ def overlay(
             detail=f"Unsupported index '{index}'. Available: ndti, ndci, fai, mndwi",
         )
 
+    # Cache first, before resolve_scene()'s live GEE query — see the note in
+    # true_color_raster: looking up the cache after the scene resolution made
+    # every pre-warmed date pay a ~30 s round trip anyway.
+    warmed = _composite_layer(waterbody_id, date, f"index_{index}.png")
+    if warmed is not None:
+        warmed.update({"index": index, "alpha": "off-water = 0"})
+        return warmed
+
     resolved = resolve_scene(wb.aoi_geojson, date)
     if resolved is None:
         raise HTTPException(
@@ -221,7 +229,6 @@ def overlay(
         )
     _, actual_date = resolved
 
-    # Pre-warmed composite first: no Earth Engine round trip at all.
     warmed = _composite_layer(waterbody_id, actual_date, f"index_{index}.png")
     if warmed is not None:
         warmed.update({"index": index, "alpha": "off-water = 0"})
@@ -297,6 +304,22 @@ def true_color_raster(
     from backend.pipeline.render import render_true_color_raster, resolve_scene
 
     wb = _require_waterbody(waterbody_id)
+
+    # CACHE FIRST, BEFORE ANY EARTH ENGINE CALL.
+    #
+    # resolve_scene() is a live GEE query, and it used to run before the cache
+    # lookup — so every request for an already-pre-warmed date still paid a
+    # round trip. Measured: ~30 s under load while the composite sat on disk
+    # ready to serve, which presented as an indefinite spinner with the
+    # indicator and time-series panels queued behind the same bottleneck. The
+    # pre-warm keys its directories by the RESOLVED date and the map's date
+    # navigator offers real scene dates, so the requested date normally hits
+    # exactly. When it does not (resolve_scene snapped to a neighbour) we fall
+    # through and pay one query.
+    warmed = _composite_layer(waterbody_id, date, "true_color.png")
+    if warmed is not None:
+        return warmed
+
     resolved = resolve_scene(wb.aoi_geojson, date)
     if resolved is None:
         raise HTTPException(
@@ -305,7 +328,6 @@ def true_color_raster(
         )
     _, actual_date = resolved
 
-    # Pre-warmed composite first: no Earth Engine round trip at all.
     warmed = _composite_layer(waterbody_id, actual_date, "true_color.png")
     if warmed is not None:
         return warmed

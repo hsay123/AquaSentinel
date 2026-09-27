@@ -1,0 +1,65 @@
+{
+  "waterbody_id": "hussain-sagar",
+  "date": "2023-10-10",
+  "requested_date": "2023-10-10",
+  "scene_id": "COPERNICUS/S2_SR_HARMONIZED/20231010T050721_20231010T051635_T43QHV",
+  "bounds": [
+    17.414975009552865,
+    78.46472970431904,
+    17.444989286540334,
+    78.5054112603798
+  ],
+  "width": 214,
+  "height": 169,
+  "scale_m": 20,
+  "layers": {
+    "true_color": {
+      "file": "true_color.png",
+      "bounds": [
+        17.414975009552865,
+        78.46472970431904,
+        17.444989286540334,
+        78.5054112603798
+      ],
+      "scene_id": "COPERNICUS/S2_SR_HARMONIZED/20231010T050721_20231010T051635_T43QHV"
+    },
+    "index_ndti": {
+      "file": "index_ndti.png",
+      "bounds": [
+        17.414975009552865,
+        78.46491786265021,
+        17.444991683832267,
+        78.5054112603798
+      ],
+      "vmin": -0.3250244379276637,
+      "vmax": 0.2668078348332451,
+      "colormap": null
+    },
+    "index_ndci": {
+      "file": "index_ndci.png",
+      "bounds": [
+        17.414975009552865,
+        78.46491786265021,
+        17.444991683832267,
+        78.5054112603798
+      ],
+      "vmin": -0.13118033723921127,
+      "vmax": 0.3876723438767235,
+      "colormap": null
+    },
+    "index_fai": {
+      "file": "index_fai.png",
+      "bounds": [
+        17.414975009552865,
+        78.46491786265021,
+        17.444991683832267,
+        78.5054112603798
+      ],
+      "vmin": -0.13562603174603177,
+      "vmax": 0.3295695238095238,
+      "colormap": null
+    }
+  },
+  "incomplete": [],
+  "bounds_source": "pipeline.render metadata (GEE sampling grid), copied verbatim"
+}

@@ -1,0 +1,25 @@
+{
+  "path": "/home/yashh/Documents/AquaSentinell/AquaSentinel/data/composites/hussain-sagar/2023-05-23/hussain-sagar_ndti_2023-05-23_overlay.png",
+  "kind": "overlay",
+  "index": "ndti",
+  "date": "2023-05-23",
+  "requested_date": "2023-05-23",
+  "scene_id": "COPERNICUS/S2_SR_HARMONIZED/20230523T050651_20230523T051519_T43QHV",
+  "bounds": [
+    17.414975009552865,
+    78.46472970431904,
+    17.444989286540334,
+    78.5054112603798
+  ],
+  "width": 214,
+  "height": 169,
+  "scale_m": 20,
+  "vmin": -0.2830116567934263,
+  "vmax": 0.35042735042735035,
+  "otsu_threshold": -0.4407351016998291,
+  "water_mask": "per-scene Otsu on MNDWI; off-water pixels are alpha 0",
+  "water_pixels": 14847,
+  "total_pixels": 36166,
+  "title": "NDTI \u2014 Turbidity proxy",
+  "description": "Normalised Difference Turbidity Index. Higher = more suspended sediment / turbidity."
+}

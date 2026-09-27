@@ -1,0 +1,33 @@
+{
+  "waterbody_id": "hussain-sagar",
+  "date": "2023-05-18",
+  "requested_date": "2023-05-18",
+  "scene_id": "COPERNICUS/S2_SR_HARMONIZED/20230518T050659_20230518T051514_T43QHV",
+  "bounds": [
+    17.414975009552865,
+    78.4647396946547,
+    17.444266866284433,
+    78.5054112603798
+  ],
+  "width": 214,
+  "height": 165,
+  "scale_m": 20,
+  "layers": {
+    "true_color": {
+      "file": "true_color.png",
+      "bounds": [
+        17.414975009552865,
+        78.4647396946547,
+        17.444266866284433,
+        78.5054112603798
+      ],
+      "scene_id": "COPERNICUS/S2_SR_HARMONIZED/20230518T050659_20230518T051514_T43QHV"
+    }
+  },
+  "incomplete": [
+    "fai",
+    "ndci",
+    "ndti"
+  ],
+  "bounds_source": "pipeline.render metadata (GEE sampling grid), copied verbatim"
+}

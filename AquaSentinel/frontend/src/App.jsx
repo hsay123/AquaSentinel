@@ -91,7 +91,14 @@ export default function App() {
     setBase({ state: 'loading', data: null, error: null })
     getTrueColorRaster(waterbody.id, sceneDate)
       .then((d) => { if (!dead) setBase(d ? { state: 'ready', data: d, error: null } : { state: 'unavailable', data: null, error: null }) })
-      .catch((e) => { if (!dead) setBase({ state: 'unavailable', data: null, error: e }) })
+      .catch((e) => {
+        if (dead) return
+        // Four terminal outcomes, never an open-ended spinner: ready,
+        // unavailable (no such acquisition / nothing cached), timeout (retryable),
+        // and this catch as a genuine failure. `timedOut` is carried through so
+        // the UI can say which one it was.
+        setBase({ state: e?.timedOut ? 'timeout' : 'unavailable', data: null, error: e })
+      })
     return () => { dead = true }
   }, [waterbody?.id, sceneDate])
 
@@ -242,7 +249,29 @@ export default function App() {
   // A panel must not claim "no real observations" while the zone grid or the
   // first series request is still in flight — that reads as a data failure when
   // it is just "not loaded yet". Fold both into the loading flag.
-  const seriesPending = seriesLoading || zonesLoading || !selectedZoneId
+  // The zone gate is the single source of truth for "can the analysis panels say
+  // anything yet", and it has FOUR terminal outcomes, not two.
+  //
+  // It used to be `seriesLoading || zonesLoading || !selectedZoneId`. That last
+  // clause is a permanent-loading bug: when GET /zones fails (a body with no
+  // cached geometry answers 404) `selectedZoneId` stays null forever, so the
+  // indicator cards and the chart rendered skeletons indefinitely with no way to
+  // reach an error or empty state. Reproduced with the zones route forced to
+  // 404: 6 skeletons still on screen at t=22s.
+  //
+  //   'loading' -> a skeleton is honest
+  //   'ready'   -> a zone is selected, panels read the series
+  //   'no-zone' -> geometry loaded but the body has no zones (terminal)
+  //   'error'   -> the geometry request failed or timed out (terminal)
+  const zoneGate = (() => {
+    if (zonesLoading) return 'loading'
+    if (zonesError) return 'error'
+    if (!selectedZoneId) return zones.length === 0 ? 'no-zone' : 'loading'
+    return 'ready'
+  })()
+
+  // Only 'loading' may ever show a skeleton.
+  const seriesPending = zoneGate === 'loading' || seriesLoading
 
   const zoneAlert = useMemo(
     () => alerts.find((a) => a.zone_id === selectedZoneId) ?? null,
@@ -358,6 +387,8 @@ export default function App() {
         pointsByIndex={pointsByIndex}
         errors={seriesErrors}
         loading={seriesPending}
+        zoneGate={zoneGate}
+        zoneError={zonesError}
         activeIndex={tsIndex}
         onSelectIndex={setTsIndex}
         alert={activeAlert}
@@ -370,6 +401,8 @@ export default function App() {
         series={series}
         index={tsIndex}
         loading={seriesPending}
+        zoneGate={zoneGate}
+        zoneError={zonesError}
         error={seriesError}
         alert={chartAlert}
         zoneLabel={zoneName(selectedZoneId, zoneLabels)}

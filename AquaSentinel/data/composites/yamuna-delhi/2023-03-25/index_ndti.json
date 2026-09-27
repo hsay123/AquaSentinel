@@ -1,0 +1,25 @@
+{
+  "path": "/home/yashh/Documents/AquaSentinell/AquaSentinel/data/composites/yamuna-delhi/2023-03-25/yamuna-delhi_ndti_2023-03-25_overlay.png",
+  "kind": "overlay",
+  "index": "ndti",
+  "date": "2023-03-25",
+  "requested_date": "2023-03-25",
+  "scene_id": "COPERNICUS/S2_SR_HARMONIZED/20230325T052649_20230325T053122_T43RGM",
+  "bounds": [
+    28.543982720866495,
+    77.28538181690583,
+    28.585792784121566,
+    77.33515885692104
+  ],
+  "width": 248,
+  "height": 227,
+  "scale_m": 20,
+  "vmin": -0.5690168818272096,
+  "vmax": 0.4072222222222222,
+  "otsu_threshold": -0.42151758074760437,
+  "water_mask": "per-scene Otsu on MNDWI; off-water pixels are alpha 0",
+  "water_pixels": 26600,
+  "total_pixels": 56296,
+  "title": "NDTI \u2014 Turbidity proxy",
+  "description": "Normalised Difference Turbidity Index. Higher = more suspended sediment / turbidity."
+}

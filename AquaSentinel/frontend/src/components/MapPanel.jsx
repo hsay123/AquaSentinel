@@ -494,18 +494,30 @@ export function MapPanel({
             </div>
           )}
 
+          {base.state === 'timeout' && (
+            <div className="legend-note">
+              Imagery request timed out — the AOI is left uncovered rather than
+              showing another date&rsquo;s image.
+            </div>
+          )}
+
           <div className="legend-foot">
             {base.state === 'ready'
               ? `AOI: Sentinel-2 true colour · ${fmtDate(base.data?.date)}`
               : base.state === 'loading'
                 ? 'AOI: fetching composite…'
-                : 'AOI: no cached composite'}
+                : base.state === 'timeout'
+                  ? 'AOI: timed out'
+                  : base.state === 'unavailable'
+                    ? 'AOI: no cached composite'
+                    : /* idle: nothing requested yet — NOT a miss */ 'AOI: not loaded'}
           </div>
         </div>
 
-        {/* Explicit cache-miss state. A miss must never leave a previous date's
-            image sitting over the new date's extent, so this is a first-class
-            state rather than a silent blank. */}
+        {/* Terminal states for the composite. A miss or a timeout must never
+            leave a previous date's image sitting over the new date's extent, and
+            neither may be confused for the other: "no cached imagery" is a
+            data-completeness fact, "timed out" is a retryable condition. */}
         {base.state === 'unavailable' && (
           <div className="map-nostate" role="status">
             <span className="map-nostate-title">
@@ -513,6 +525,17 @@ export function MapPanel({
             </span>
             <span className="map-nostate-note">
               {base.error?.message ?? 'The renderer has no Sentinel-2 acquisition cached for this AOI on this date.'}
+            </span>
+          </div>
+        )}
+
+        {base.state === 'timeout' && (
+          <div className="map-nostate is-timeout" role="status">
+            <span className="map-nostate-title">Imagery request timed out</span>
+            <span className="map-nostate-note">
+              {base.error?.message ?? 'The render did not respond in time.'} The AOI is
+              left uncovered rather than showing another date&rsquo;s image. Reload or
+              pick a different date to retry.
             </span>
           </div>
         )}

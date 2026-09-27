@@ -1,0 +1,25 @@
+{
+  "path": "/home/yashh/Documents/AquaSentinell/AquaSentinel/data/composites/hussain-sagar/2023-07-02/hussain-sagar_fai_2023-07-02_overlay.png",
+  "kind": "overlay",
+  "index": "fai",
+  "date": "2023-07-02",
+  "requested_date": "2023-07-02",
+  "scene_id": "COPERNICUS/S2_SR_HARMONIZED/20230702T050701_20230702T051521_T43QHV",
+  "bounds": [
+    17.415336232072377,
+    78.46473220194791,
+    17.444808681481792,
+    78.50540635413489
+  ],
+  "width": 214,
+  "height": 166,
+  "scale_m": 20,
+  "vmin": -0.08999460317460317,
+  "vmax": 0.5492993650793652,
+  "otsu_threshold": -0.42655283212661743,
+  "water_mask": "per-scene Otsu on MNDWI; off-water pixels are alpha 0",
+  "water_pixels": 2483,
+  "total_pixels": 35524,
+  "title": "FAI \u2014 Floating algae index",
+  "description": "Floating Algae Index. Higher = more floating vegetation or surface scum."
+}

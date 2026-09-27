@@ -1,0 +1,19 @@
+{
+  "path": "/home/yashh/Documents/AquaSentinell/AquaSentinel/data/composites/hussain-sagar/2023-01-08/hussain-sagar_truecolor_2023-01-08_raster.png",
+  "kind": "true-color-raster",
+  "date": "2023-01-08",
+  "requested_date": "2023-01-08",
+  "scene_id": "COPERNICUS/S2_SR_HARMONIZED/20230108T051209_20230108T051203_T43QHV",
+  "bounds": [
+    17.414975009552865,
+    78.46472970431904,
+    17.444989286540334,
+    78.5054112603798
+  ],
+  "width": 214,
+  "height": 169,
+  "scale_m": 20,
+  "stretch_low": 0.0222,
+  "stretch_high": 0.19820000000000002,
+  "title": "True colour \u2014 Sentinel-2 L2A"
+}
